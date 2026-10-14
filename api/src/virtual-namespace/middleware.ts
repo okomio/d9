@@ -8,7 +8,8 @@ import { resolveNamespaceMembership } from './membership.js';
 import { isControlPlanePath } from './paths.js';
 import { getNamespace } from './registry.js';
 import { pickNamespace } from './resolve.js';
-import { isControlPlaneWrite } from './admin-scope.js';
+import { getActiveNamespaceId } from './context.js';
+import { isAlwaysBlockedWrite, namespaceOwnedWrite, targetIdFromPath } from './admin-scope.js';
 
 /**
  * The namespace the request asks for, keeping the claim and the header separate
@@ -93,20 +94,41 @@ export function virtualNamespace(): RequestHandler {
 }
 
 /**
- * Keeps a namespace-scoped admin off the shared control plane.
+ * Keeps a namespace-scoped admin off the shared control plane, while leaving
+ * them in charge of their own namespace — including its roles and permissions,
+ * whose rows now carry a namespace.
  *
  * Must be mounted after `virtualNamespace()`, which is what records that the
  * caller's admin authority came from a membership rather than from the shared
- * role. Without this, `admin_access` — a single boolean meaning "skip ACL
- * checks" — lets a namespace admin read the whole user directory and write to a
- * role belonging to another namespace.
+ * role.
  */
 export function namespaceAdminScope(): RequestHandler {
-	return (req, _res, next) => {
-		if (req.namespaceScopedAdmin === true && isControlPlaneWrite(req.method, req.path)) {
+	return asyncHandler(async (req, _res, next) => {
+		if (req.namespaceScopedAdmin !== true) {
+			next();
+			return;
+		}
+
+		if (isAlwaysBlockedWrite(req.method, req.path)) {
 			throw new ForbiddenException();
 		}
 
+		const owned = namespaceOwnedWrite(req.method, req.path);
+
+		if (owned) {
+			const targetId = targetIdFromPath(req.path, owned.prefix);
+
+			// A create has no target: `stampNamespace` puts it in the admin's own
+			// namespace, so there is nothing to check.
+			if (targetId) {
+				const row = await getDatabase().select('namespace').from(owned.table).where({ id: targetId }).first();
+
+				if (row && row.namespace !== getActiveNamespaceId()) {
+					throw new ForbiddenException();
+				}
+			}
+		}
+
 		next();
-	};
+	});
 }
