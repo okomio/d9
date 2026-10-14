@@ -8,6 +8,7 @@ import { resolveNamespaceMembership } from './membership.js';
 import { isControlPlanePath } from './paths.js';
 import { getNamespace } from './registry.js';
 import { pickNamespace } from './resolve.js';
+import { isControlPlaneWrite } from './admin-scope.js';
 
 /**
  * The namespace the request asks for, keeping the claim and the header separate
@@ -74,6 +75,11 @@ export function virtualNamespace(): RequestHandler {
 				throw new ForbiddenException();
 			}
 
+			// Remember where this admin authority came from. The guard mounted
+			// after this middleware uses it to keep a namespace admin off the
+			// shared control plane, which is instance-wide.
+			if (membership.admin_access) req.namespaceScopedAdmin = true;
+
 			accountability.role = membership.role;
 			accountability.admin = membership.admin_access;
 			accountability.app = membership.app_access;
@@ -83,4 +89,23 @@ export function virtualNamespace(): RequestHandler {
 		// work in terms of the schema, while the id stays the external identifier.
 		runWithNamespace(namespace.schema_name, next);
 	});
+}
+
+/**
+ * Keeps a namespace-scoped admin off the shared control plane.
+ *
+ * Must be mounted after `virtualNamespace()`, which is what records that the
+ * caller's admin authority came from a membership rather than from the shared
+ * role. Without this, `admin_access` — a single boolean meaning "skip ACL
+ * checks" — lets a namespace admin read the whole user directory and write to a
+ * role belonging to another namespace.
+ */
+export function namespaceAdminScope(): RequestHandler {
+	return (req, _res, next) => {
+		if (req.namespaceScopedAdmin === true && isControlPlaneWrite(req.method, req.path)) {
+			throw new ForbiddenException();
+		}
+
+		next();
+	};
 }

@@ -66,7 +66,7 @@ import { Url } from './utils/url.js';
 import { validateEnv } from './utils/validate-env.js';
 import { validateStorage } from './utils/validate-storage.js';
 import { isVirtualNamespaceEnabled } from './virtual-namespace/config.js';
-import { virtualNamespace } from './virtual-namespace/middleware.js';
+import { namespaceAdminScope, virtualNamespace } from './virtual-namespace/middleware.js';
 import { init as initWebhooks } from './webhooks.js';
 
 const require = createRequire(import.meta.url);
@@ -245,6 +245,7 @@ export default async function createApp(): Promise<express.Application> {
 
 	if (isVirtualNamespaceEnabled()) {
 		app.use(virtualNamespace());
+		app.use(namespaceAdminScope());
 	}
 
 	app.use(cache);

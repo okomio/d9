@@ -16,6 +16,7 @@ declare global {
 
 			accountability?: Accountability;
 			virtualNamespace?: string;
+			namespaceScopedAdmin?: boolean;
 			singleton?: boolean;
 		}
 	}
