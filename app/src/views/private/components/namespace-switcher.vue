@@ -1,38 +1,42 @@
 <template>
 	<div class="namespace-switcher">
-		<div class="namespace-row">
-			<select
-				ref="selector"
-				class="namespace-select"
-				aria-label="Virtual namespace"
-				:value="activeId ?? ''"
-				:disabled="!canSelect"
-				@change="selectNamespace"
-			>
-				<option v-if="!activeInChoices" :value="activeId ?? ''" disabled>
-					{{ activeId ? 'Namespace access unavailable' : 'Choose a namespace' }}
-				</option>
-				<option
+		<v-menu placement="bottom-start" show-arrow :disabled="!canOpen">
+			<template #activator="{ toggle, active }">
+				<button
+					ref="trigger"
+					class="namespace-trigger"
+					type="button"
+					aria-label="Switch virtual namespace"
+					aria-haspopup="menu"
+					:aria-expanded="active"
+					:disabled="!canOpen"
+					@click="toggle"
+				>
+					<span class="namespace-name">{{ activeName }}</span>
+					<v-icon name="expand_more" small />
+				</button>
+			</template>
+
+			<v-list class="namespace-menu" role="menu" aria-label="Virtual namespaces">
+				<v-list-item
 					v-for="choice in choices"
 					:key="choice.namespace.id"
-					:value="choice.namespace.id"
+					clickable
+					role="menuitem"
+					:tabindex="isEnterableChild(choice) ? 0 : -1"
+					:active="choice.namespace.id === activeId"
 					:disabled="!isEnterableChild(choice)"
+					@click="selectNamespace(choice.namespace.id)"
+					@keydown.enter="selectNamespace(choice.namespace.id)"
+					@keydown.space.prevent="selectNamespace(choice.namespace.id)"
 				>
-					{{ optionLabel(choice) }}
-				</option>
-			</select>
-			<button
-				ref="refreshButton"
-				class="refresh"
-				type="button"
-				aria-label="Refresh virtual namespaces"
-				:disabled="loading || switching"
-				@click="refresh"
-			>
-				<v-icon name="refresh" small />
-			</button>
-		</div>
+					<v-list-item-icon><v-icon :name="choice.namespace.id === activeId ? 'check' : 'layers'" /></v-list-item-icon>
+					<v-list-item-content>{{ optionLabel(choice) }}</v-list-item-content>
+				</v-list-item>
+			</v-list>
+		</v-menu>
 		<span class="namespace-status" role="status" aria-live="polite">{{ status }}</span>
+		<button v-if="listError" class="retry" type="button" @click="refresh">Retry</button>
 	</div>
 </template>
 
@@ -48,8 +52,7 @@ import type { AuthorizedNamespaceChoice } from '@/namespaces/types';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const runtime = getNamespaceRuntime();
-const selector = ref<HTMLSelectElement | null>(null);
-const refreshButton = ref<HTMLButtonElement | null>(null);
+const trigger = ref<HTMLButtonElement | null>(null);
 const loading = computed(() => runtime?.state.choicesLoading ?? false);
 const listError = computed(() => !!runtime?.state.choicesError);
 const switchError = ref(false);
@@ -58,26 +61,19 @@ let mounted = true;
 
 const choices = computed(() => runtime?.state.choices.filter((choice) => choice.namespace.kind === 'virtual') ?? []);
 const activeId = computed(() => runtime?.state.active?.namespaceId ?? null);
-const activeInChoices = computed(() => choices.value.some((choice) => choice.namespace.id === activeId.value));
+const activeName = computed(() => runtime?.state.active?.namespace.name ?? 'Choose a namespace');
 const eligibleCount = computed(() => choices.value.filter(isEnterableChild).length);
 const busy = computed(() => switching.value || (!!runtime && !['ready', 'no-access'].includes(runtime.state.phase)));
-const canSelect = computed(
-	() =>
-		!loading.value &&
-		!listError.value &&
-		!busy.value &&
-		choices.value.some((choice) => isEnterableChild(choice) && choice.namespace.id !== activeId.value)
-);
+const canOpen = computed(() => !loading.value && !listError.value && !busy.value && choices.value.length > 0);
 const status = computed(() => {
 	if (loading.value) return 'Loading virtual namespaces…';
-	if (listError.value) return 'Could not load virtual namespaces. Refresh to retry.';
+	if (listError.value) return 'Could not load virtual namespaces.';
 	if (busy.value) {
 		const target = choices.value.find((choice) => choice.namespace.id === runtime?.state.pending);
 		return target ? `Switching to ${target.namespace.name}…` : 'Switching namespace…';
 	}
 	if (switchError.value) return 'Could not switch namespace. Your current namespace is still selected.';
 	if (!eligibleCount.value) return 'No virtual namespace is available to open.';
-	if (eligibleCount.value === 1) return 'Only one virtual namespace is available.';
 	return '';
 });
 
@@ -100,13 +96,10 @@ async function refresh() {
 	}
 }
 
-async function selectNamespace(event: Event) {
-	const select = event.target as HTMLSelectElement;
-	const id = select.value;
-	select.value = activeId.value ?? '';
+async function selectNamespace(id: string) {
 	if (
 		!runtime ||
-		!canSelect.value ||
+		!canOpen.value ||
 		!choices.value.some((choice) => choice.namespace.id === id && isEnterableChild(choice))
 	)
 		return;
@@ -128,8 +121,7 @@ async function selectNamespace(event: Event) {
 		if (mounted) {
 			switching.value = false;
 			await nextTick();
-			if (selector.value?.disabled) refreshButton.value?.focus();
-			else selector.value?.focus();
+			trigger.value?.focus();
 			restoreFocusAfterSwitch = false;
 		}
 	}
@@ -140,9 +132,8 @@ watch(
 	async () => {
 		if (!restoreFocusAfterSwitch || runtime?.state.phase !== 'ready' || loading.value) return;
 		await nextTick();
-		if (!selector.value || loading.value) return;
-		if (selector.value.disabled) refreshButton.value?.focus();
-		else selector.value.focus();
+		if (!trigger.value || loading.value) return;
+		trigger.value.focus();
 		restoreFocusAfterSwitch = false;
 	},
 	{ immediate: true }
@@ -160,38 +151,48 @@ onBeforeUnmount(() => {
 	min-width: 0;
 	color: var(--foreground-normal-alt);
 }
-.namespace-row {
+.namespace-trigger {
 	display: flex;
 	align-items: center;
-	gap: 4px;
-}
-.namespace-select {
+	justify-content: space-between;
 	width: 100%;
 	min-width: 0;
 	padding: 0;
 	border: 0;
 	background: transparent;
 	color: inherit;
-	font: inherit;
-	font-weight: 600;
-	text-overflow: ellipsis;
+	font-family: inherit;
+	font-size: 13px;
+	line-height: 18px;
+	text-align: left;
 	cursor: pointer;
+	&:hover:not(:disabled) {
+		color: var(--foreground-normal);
+	}
+	&:focus-visible {
+		outline: 2px solid var(--primary);
+		outline-offset: 2px;
+	}
 	&:disabled {
 		cursor: default;
-		opacity: 1;
 	}
 }
-.refresh {
+.namespace-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.namespace-trigger .v-icon {
 	flex: none;
-	padding: 0;
-	border: 0;
-	background: transparent;
-	color: var(--foreground-subdued);
-	cursor: pointer;
-	&:disabled {
-		cursor: default;
-		opacity: 0.5;
-	}
+	margin-left: 8px;
+}
+.namespace-menu {
+	--v-list-min-width: 220px;
+	--v-list-max-width: 320px;
+}
+.namespace-menu .v-list-item-icon {
+	margin-right: 8px;
 }
 .namespace-status {
 	display: block;
@@ -204,5 +205,13 @@ onBeforeUnmount(() => {
 	&:empty {
 		display: none;
 	}
+}
+.retry {
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--primary);
+	font-size: 11px;
+	cursor: pointer;
 }
 </style>

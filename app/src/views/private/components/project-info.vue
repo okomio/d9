@@ -2,12 +2,7 @@
 	<div class="project-info">
 		<latency-indicator />
 		<div class="name-container">
-			<v-text-overflow
-				placement="right"
-				class="name"
-				:class="{ 'parent-name': namespaceFrontendEnabled }"
-				:text="name"
-			/>
+			<v-text-overflow placement="right" class="name" :text="name" />
 			<namespace-switcher v-if="namespaceFrontendEnabled" />
 			<v-text-overflow v-else-if="descriptor" placement="right" class="descriptor" :text="descriptor" />
 		</div>
@@ -55,11 +50,6 @@ export default defineComponent({
 
 	.name {
 		margin-right: 8px;
-	}
-
-	.parent-name {
-		font-size: 12px;
-		color: var(--foreground-subdued);
 	}
 
 	.descriptor {
