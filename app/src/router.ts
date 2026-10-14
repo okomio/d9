@@ -1,6 +1,7 @@
 import { refresh } from '@/auth';
 import { hydrate } from '@/hydrate';
 import { namespaceFrontendEnabled } from '@/namespaces/enabled';
+import { allowedDestination } from '@/namespaces/choices';
 import TFASetup from '@/routes/tfa-setup.vue';
 import AcceptInviteRoute from '@/routes/accept-invite.vue';
 import LoginRoute from '@/routes/login/login.vue';
@@ -283,6 +284,8 @@ export const onBeforeEach: NavigationGuard = async (to) => {
 		if (runtime.state.phase !== 'ready') return withNamespace('/namespace/recover', runtime.state.active.namespaceId);
 
 		if (requested && requested !== runtime.state.active.namespaceId) {
+			if (!allowedDestination(runtime.state.choices, requested, runtime.state.active.platform.isGlobalAdmin))
+				return '/namespace/choose';
 			const result = await runtime.coordinator.requestSwitch({
 				namespaceId: requested,
 				source: 'history',
