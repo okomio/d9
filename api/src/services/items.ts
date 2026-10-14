@@ -6,6 +6,7 @@ import { assign, clone, cloneDeep, omit, pick, without } from 'lodash-es';
 import { getCache } from '../cache.js';
 import { getHelpers } from '../database/helpers/index.js';
 import getDatabase from '../database/index.js';
+import { limitToNamespace, stampNamespace } from '../virtual-namespace/scope.js';
 import runAST from '../database/run-ast.js';
 import emitter from '../emitter.js';
 import env from '../env.js';
@@ -92,6 +93,10 @@ export class ItemsService<Item extends AnyItem = AnyItem> implements AbstractSer
 	 * Create a single new item.
 	 */
 	async createOne(data: Partial<Item>, opts: MutationOptions = {}): Promise<PrimaryKey> {
+		// Stamp the owning namespace, so a role, permission, activity or revision
+		// record created in an area belongs to that area rather than to none.
+		data = stampNamespace(this.collection, data);
+
 		if (!opts.mutationTracker) opts.mutationTracker = this.createMutationTracker();
 
 		if (!opts.bypassLimits) {
@@ -310,6 +315,8 @@ export class ItemsService<Item extends AnyItem = AnyItem> implements AbstractSer
 	 * Create multiple new items at once. Inserts all provided records sequentially wrapped in a transaction.
 	 */
 	async createMany(data: Partial<Item>[], opts: MutationOptions = {}): Promise<PrimaryKey[]> {
+		data = data.map((row) => stampNamespace(this.collection, row));
+
 		if (!opts.mutationTracker) opts.mutationTracker = this.createMutationTracker();
 
 		const { primaryKeys, nestedActionEvents } = await this.knex.transaction(async (trx) => {
@@ -357,6 +364,11 @@ export class ItemsService<Item extends AnyItem = AnyItem> implements AbstractSer
 	 * Get items by query
 	 */
 	async readByQuery(query: Query, opts?: QueryOptions): Promise<Item[]> {
+		// Limit reads of the shared tables that carry a namespace column. Applied
+		// here because every one of them is read through this service, and
+		// readOne/readMany delegate to it.
+		query = limitToNamespace(this.collection, query);
+
 		const updatedQuery =
 			opts?.emitEvents !== false
 				? await emitter.emitFilter(

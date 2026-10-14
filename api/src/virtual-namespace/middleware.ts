@@ -86,8 +86,9 @@ export function virtualNamespace(): RequestHandler {
 		}
 
 		// The context carries the physical schema: `search_path` and the caches
-		// work in terms of the schema, while the id stays the external identifier.
-		runWithNamespace(namespace.schema_name, next);
+		// work in terms of the schema, while the id is what belongs in `namespace`
+		// columns, memberships and token claims.
+		runWithNamespace({ id: namespace.id, schema: namespace.schema_name }, next);
 	});
 }
 
