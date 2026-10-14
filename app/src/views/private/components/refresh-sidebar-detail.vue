@@ -11,7 +11,7 @@
 
 <script lang="ts">
 import { useI18n } from 'vue-i18n';
-import { computed, defineComponent, ref, watch } from 'vue';
+import { computed, defineComponent, ref, watch, onBeforeUnmount } from 'vue';
 
 export default defineComponent({
 	props: {
@@ -34,6 +34,10 @@ export default defineComponent({
 		});
 
 		const activeInterval = ref<NodeJS.Timeout | null>(null);
+
+		onBeforeUnmount(() => {
+			if (activeInterval.value !== null) clearInterval(activeInterval.value);
+		});
 
 		watch(
 			interval,

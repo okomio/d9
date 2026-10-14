@@ -1,7 +1,7 @@
 import { useCollectionsStore } from '@/stores/collections';
 import { useFieldsStore } from '@/stores/fields';
 import availableLanguages from './available-languages.yaml';
-import { i18n, Language, loadedLanguages } from './index';
+import { i18n, Language, loadedLanguages, recordBaseLocale } from './index';
 import { useTranslationStrings } from '@/composables/use-translation-strings';
 import { loadDateFNSLocale } from '@/utils/get-date-fns-locale';
 
@@ -17,6 +17,7 @@ export async function setLanguage(lang: Language): Promise<boolean> {
 		if (loadedLanguages.includes(lang) === false) {
 			try {
 				const { default: translations } = await import(`./translations/${lang}.yaml`);
+				recordBaseLocale(lang, translations);
 				i18n.global.mergeLocaleMessage(lang, translations);
 				loadedLanguages.push(lang);
 			} catch (err: any) {

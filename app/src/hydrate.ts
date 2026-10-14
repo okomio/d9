@@ -45,7 +45,7 @@ export function useStores(
 	return stores.map((useStore) => useStore()) as GenericStore[];
 }
 
-export async function hydrate(): Promise<void> {
+export async function hydrate(options: { strict?: boolean } = {}): Promise<void> {
 	const stores = useStores();
 
 	const appStore = useAppStore();
@@ -69,15 +69,49 @@ export async function hydrate(): Promise<void> {
 		 */
 		await userStore.hydrate();
 
+		if (options.strict && userStore.currentUser && !('share' in userStore.currentUser)) {
+			const active = (await import('@/namespaces/live')).getNamespaceRuntime()?.state.active;
+
+			if (active?.namespace.kind === 'virtual') {
+				const role = active.access.localRole;
+
+				userStore.currentUser.role = role
+					? ({
+							id: role.id,
+							name: role.name,
+							admin_access: active.access.isNamespaceAdmin,
+							app_access: active.access.canUseApp,
+					  } as typeof userStore.currentUser.role)
+					: (null as unknown as typeof userStore.currentUser.role);
+			}
+		}
+
 		let lang = 'en-US';
 		if (serverStore.info?.project?.default_language) lang = serverStore.info.project.default_language;
-		if (userStore.currentUser?.language) lang = userStore.currentUser?.language;
+		if (userStore.currentUser && 'language' in userStore.currentUser && userStore.currentUser.language)
+			lang = userStore.currentUser.language;
 
-		if (userStore.currentUser?.role) {
+		if (
+			userStore.currentUser?.role ||
+			(options.strict &&
+				(await import('@/namespaces/live')).getNamespaceRuntime()?.state.active?.platform.isGlobalAdmin)
+		) {
 			await Promise.all([permissionsStore.hydrate(), fieldsStore.hydrate({ skipTranslation: true })]);
 
 			const hydratedStores = ['userStore', 'permissionsStore', 'fieldsStore'];
-			await Promise.all(stores.filter(({ $id }) => !hydratedStores.includes($id)).map((store) => store.hydrate?.()));
+
+			if (options.strict) {
+				const required = ['collectionsStore', 'relationsStore', 'presetsStore'];
+				await Promise.all(stores.filter(({ $id }) => required.includes($id)).map((store) => store.hydrate?.()));
+
+				await Promise.allSettled(
+					stores
+						.filter(({ $id }) => !hydratedStores.includes($id) && !required.includes($id))
+						.map((store) => store.hydrate?.())
+				);
+			} else {
+				await Promise.all(stores.filter(({ $id }) => !hydratedStores.includes($id)).map((store) => store.hydrate?.()));
+			}
 
 			await onHydrateExtensions();
 		}
@@ -88,6 +122,7 @@ export async function hydrate(): Promise<void> {
 		appStore.basemap = getBasemapSources()[0].name;
 	} catch (error: any) {
 		appStore.error = error;
+		if (options.strict) throw error;
 	} finally {
 		appStore.hydrating = false;
 	}
@@ -97,14 +132,24 @@ export async function hydrate(): Promise<void> {
 
 export async function dehydrate(stores = useStores()): Promise<void> {
 	const appStore = useAppStore();
-
-	if (appStore.hydrated === false) return;
+	let failed = false;
 
 	for (const store of stores) {
-		await store.dehydrate?.();
+		try {
+			await store.dehydrate?.();
+		} catch {
+			failed = true;
+		}
 	}
 
-	await onDehydrateExtensions();
+	try {
+		await onDehydrateExtensions();
+	} catch {
+		failed = true;
+	}
 
 	appStore.hydrated = false;
+	appStore.hydrating = false;
+	appStore.error = null;
+	if (failed) throw new Error('Namespace state reset failed');
 }

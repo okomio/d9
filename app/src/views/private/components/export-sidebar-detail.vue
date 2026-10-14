@@ -232,7 +232,8 @@
 </template>
 
 <script lang="ts" setup>
-import api from '@/api';
+import api, { getToken } from '@/api';
+import { getNamespaceRuntime } from '@/namespaces/live';
 import { usePermissionsStore } from '@/stores/permissions';
 import { getPublicURL } from '@/utils/get-root-path';
 import { notify } from '@/utils/notify';
@@ -494,6 +495,9 @@ function useUpload() {
 }
 
 function startExport() {
+	const runtime = getNamespaceRuntime();
+	if (runtime?.state.active && runtime.state.phase !== 'ready') return;
+
 	if (location.value === 'download') {
 		exportDataLocal();
 	} else {
@@ -508,7 +512,7 @@ function exportDataLocal() {
 	const url = getPublicURL() + endpoint.substring(1);
 
 	let params: Record<string, unknown> = {
-		access_token: api.defaults.headers.common['Authorization'].substring(7),
+		access_token: getToken(),
 		export: format.value,
 	};
 
@@ -529,6 +533,8 @@ function exportDataLocal() {
 }
 
 async function exportDataFiles() {
+	const runtime = getNamespaceRuntime();
+	const source = runtime?.state.active && { ...runtime.state.active };
 	exporting.value = true;
 
 	try {
@@ -543,6 +549,8 @@ async function exportDataFiles() {
 			},
 		});
 
+		if (source && !runtime?.ledger.current(source)) return;
+
 		exportDialogActive.value = false;
 
 		notify({
@@ -552,7 +560,7 @@ async function exportDataFiles() {
 			icon: 'file_download',
 		});
 	} catch (err: any) {
-		unexpectedError(err);
+		if (!source || runtime?.ledger.current(source)) unexpectedError(err);
 	} finally {
 		exporting.value = false;
 	}

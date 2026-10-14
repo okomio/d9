@@ -5,6 +5,7 @@ import { parseFilter } from '@/utils/parse-filter';
 import { parsePreset } from '@/utils/parse-preset';
 import { defineStore } from 'pinia';
 import { useUserStore } from '../stores/user';
+import { getNamespaceRuntime } from '@/namespaces/live';
 
 export const usePermissionsStore = defineStore({
 	id: 'permissionsStore',
@@ -14,6 +15,11 @@ export const usePermissionsStore = defineStore({
 	actions: {
 		async hydrate() {
 			const userStore = useUserStore();
+
+			if (!userStore.currentUser?.role) {
+				this.permissions = [];
+				return;
+			}
 
 			const response = await api.get('/permissions', {
 				params: { limit: -1, filter: { role: { _eq: userStore.currentUser!.role.id } } },
@@ -76,6 +82,7 @@ export const usePermissionsStore = defineStore({
 		},
 		hasPermission(collection: string, action: Permission['action']) {
 			const userStore = useUserStore();
+			if (getNamespaceRuntime()?.state.active?.access.isNamespaceAdmin) return true;
 			if (userStore.currentUser?.role?.admin_access === true) return true;
 			return !!this.getPermissionsForUser(collection, action);
 		},

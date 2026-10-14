@@ -4,6 +4,7 @@ import { User } from '@wbce-d9/types';
 import { userName } from '@/utils/user-name';
 import { merge } from 'lodash';
 import { defineStore } from 'pinia';
+import { getNamespaceRuntime } from '@/namespaces/live';
 
 type ShareUser = {
 	share: string;
@@ -27,6 +28,8 @@ export const useUserStore = defineStore({
 			return userName(this.currentUser);
 		},
 		isAdmin(): boolean {
+			const active = getNamespaceRuntime()?.state.active;
+			if (active) return active.access.isNamespaceAdmin;
 			return this.currentUser?.role.admin_access === true || false;
 		},
 	},
@@ -56,6 +59,7 @@ export const useUserStore = defineStore({
 				this.currentUser = data.data;
 			} catch (error: any) {
 				this.error = error;
+				throw error;
 			} finally {
 				this.loading = false;
 			}
