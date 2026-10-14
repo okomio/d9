@@ -1,0 +1,22 @@
+# T2 — Traffic-ranked compatibility priorities (sanitized)
+
+**Scope:** a 14-day production gateway-log sample, 30 September–14 October 2026, covering Infrastructure, Coverage, B2B and BI. Usage descriptions replace exact traffic counts. Anonymous labels represent observed caller signatures and may cover multiple clients; they are not verified account identities. Native collection names below imply `/items/`.
+
+**Compatibility boundary:** retain the existing B2B/BI API prefixes `/b2b/*`, `/bi/*` and `/downloads/{b2b,bi}/*`. Validate their external behavior separately from native d9 contracts.
+
+| Rank | Scope / endpoints and observed usage | Anonymous caller labels | Compatibility / T5 check |
+| --- | --- | --- | --- |
+| **1 · P0** | **Coverage:** `providers`, `fares`, `provider_carriers`, `classes`, `carriers`. Very high usage. | Integrations A–E | Names, relational fields, filters, pagination, ACLs and legacy-token default namespace. |
+| **2 · P0** | **Infrastructure:** `tracking_events`, `tracking_contexts`, `collector_event_validation_config`. Very high usage. | HTTP signature R1 | Items queries, envelopes and namespace selection. |
+| **3 · P0** | **B2B `/b2b/items/`:** `partners`, `whitelabels`, `users` root/keys, `partners_webhook_config`. Very high usage. | Integrations F/G/B/C | Existing prefixed list/detail contracts, string keys and namespace-specific business data. |
+| **4 · P0** | **B2B:** POST `/b2b/items/users_roles`, `/b2b/items/partners_roles`, `/b2b/utils/hash/match`; DELETE; `/downloads/b2b/:file`. Frequent downloads and repeated writes. | Integrations H/I | Automated writes/hash matching, business role links, delete 204/404 behavior and download contract. |
+| **5 · P0** | **Coverage:** `connect`, `connect_search`, `rate_limiter`, `rate_limiter_whitelisted_quotas`. High usage. | HTTP signature R2 | Configuration projections, existing access and default namespace. Service identity unresolved. |
+| **6 · P0** | **Coverage:** POST `/graphql`; schema reads `/fields`, `/relations`. Repeated machine use. Infrastructure GraphQL also observed. | HTTP signature R3 | Machine schema discovery, namespace-scoped metadata and GraphQL results/errors; HTTP 200 alone is insufficient. |
+| **7 · P0** | **Native auth:** refresh, login, `/users/me`. Repeated use. | Browser signatures | Session continuity, cookie/JSON modes, expiry units, SSO and token precedence/fallback. |
+| **8 · P0** | **Infrastructure:** `Features`, `hooks`. High usage. | HTTP signature R4 | Preserve capital **F**, configuration reads and ACLs. |
+| **9 · P1** | **Infrastructure:** `sponsored_listings`, `native_ad`, `banner_ad`, `translation_keys`. **Coverage:** `teams`, `discount_cards_config`, `initialisation_component`, `offer_upsell`, `provider_splitting`; assets/files; SEARCH providers. Automated reads and occasional special methods. | HTTP signatures; integrations J/K; API-tool signature | Smoke ad/translation and configuration reads, SEARCH JSON bodies, asset bytes/headers and file ACLs. |
+| **10 · P1** | **BI:** `/bi/`, `/bi/items/dataproc_jobs`, SSO, profile, presets and downloads. Low usage; root/UI dominates, with repeated job API reads. | Script signature R5; browsers | Preserve URL-token job reads, `filter[cluster.name][eq]`/`meta`, `/bi/auth/sso` and existing editor paths. Low usage is not permission to break them. |
+
+**Anonymous token evidence:** Token A (opaque) → successful scripted Coverage fare reads with `limit=-1` and nested policy/provider fields. Token B (JWT) → provider CSV export using `fields[]=name&fields[]=provider_id`, `limit=1000`; its decoded claim refers to User A, with the signature unverified. Token C (opaque) → repeated successful scripted BI `dataproc_jobs` reads. These labels are arbitrary, not derived from credentials or identifiers. Account names and opaque-token owners remain unresolved; resource keys are not caller identities.
+
+**Decision/evidence:** P0 first; P1 still receives contract/smoke coverage. Use [endpoint-inventory.md](endpoint-inventory.md) for native contracts; prefixed legacy contracts require separate validation. Ranking reflects aggregated gateway observations and limited request samples, including successful responses. Caller labels summarize signatures rather than authenticated principals. Gateway-visible traffic only; request bodies unavailable; unranked endpoints remain unmeasured. Exact metrics, runtime/service identifiers, account identifiers, credential fingerprints and internal log-access coordinates have been redacted.
