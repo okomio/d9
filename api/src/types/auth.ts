@@ -60,4 +60,9 @@ export type LoginResult = {
 	refreshToken: any;
 	expires: any;
 	id?: any;
+	/** Effective namespace access, for the client's context store. */
+	namespaceContext?: {
+		is_global_admin: boolean;
+		namespace: unknown;
+	};
 };

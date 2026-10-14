@@ -428,14 +428,14 @@ export function createLDAPAuthRouter(provider: string): Router {
 
 			const mode = req.body.mode || 'json';
 
-			const { accessToken, refreshToken, expires } = await authenticationService.login(
+			const { accessToken, refreshToken, expires, namespaceContext } = await authenticationService.login(
 				provider,
 				req.body,
 				req.body?.otp
 			);
 
 			const payload = {
-				data: { access_token: accessToken, expires },
+				data: { access_token: accessToken, expires, ...namespaceContext },
 			} as Record<string, Record<string, any>>;
 
 			if (mode === 'json') {

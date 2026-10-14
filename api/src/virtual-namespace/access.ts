@@ -1,7 +1,7 @@
 import type { Knex } from 'knex';
 import { getDefaultNamespace } from './config.js';
 import { MEMBERSHIP_TABLE, resolveNamespaceMembership, ROLES_TABLE } from './membership.js';
-import { listNamespaces, type NamespaceKind, type NamespaceReadiness } from './registry.js';
+import { getNamespace, listNamespaces, type NamespaceKind, type NamespaceReadiness, type NamespaceRecord } from './registry.js';
 
 export type NamespaceRole = {
 	id: string;
@@ -29,6 +29,15 @@ export type NamespaceAccess = {
 	can_use_app: boolean;
 };
 
+/**
+ * The namespace context attached to a token response, so a client never has to
+ * infer the effective role or capabilities from the token's own flags.
+ */
+export type NamespaceContextPayload = {
+	is_global_admin: boolean;
+	namespace: NamespaceAccess | null;
+};
+
 const isTrue = (value: unknown): boolean => value === true || value === 1;
 
 async function getRole(database: Knex, roleId: string): Promise<NamespaceRole | undefined> {
@@ -44,8 +53,12 @@ async function getRole(database: Knex, roleId: string): Promise<NamespaceRole | 
 	};
 }
 
-async function listMemberships(database: Knex, userId: string): Promise<Map<string, NamespaceRole>> {
-	const rows = await database
+async function listMemberships(
+	database: Knex,
+	userId: string,
+	namespaceId?: string
+): Promise<Map<string, NamespaceRole>> {
+	const query = database
 		.select({
 			namespace_id: 'm.namespace_id',
 			role_id: 'r.id',
@@ -57,6 +70,9 @@ async function listMemberships(database: Knex, userId: string): Promise<Map<stri
 		.leftJoin(`${ROLES_TABLE} as r`, 'm.role_id', 'r.id')
 		.where('m.user_id', userId);
 
+	if (namespaceId) query.andWhere('m.namespace_id', namespaceId);
+
+	const rows = await query;
 	const memberships = new Map<string, NamespaceRole>();
 
 	for (const row of rows) {
@@ -71,6 +87,42 @@ async function listMemberships(database: Knex, userId: string): Promise<Map<stri
 	}
 
 	return memberships;
+}
+
+/**
+ * The role a caller holds in a namespace: the membership role, or the shared
+ * (main-namespace) role for the main namespace itself.
+ *
+ * Returns undefined when the caller holds nothing, which is what makes the
+ * Global Admin case representable: authority with no membership row.
+ */
+async function resolveRole(
+	database: Knex,
+	caller: CallerIdentity,
+	namespace: NamespaceRecord
+): Promise<NamespaceRole | undefined> {
+	if (namespace.kind === 'main') {
+		return caller.role ? await getRole(database, caller.role) : undefined;
+	}
+
+	if (!caller.user) return undefined;
+
+	return (await listMemberships(database, caller.user, namespace.id)).get(namespace.id);
+}
+
+function buildAccess(namespace: NamespaceRecord, membership: NamespaceRole | undefined, caller: CallerIdentity): NamespaceAccess {
+	const isMain = namespace.kind === 'main';
+
+	return {
+		id: namespace.id,
+		name: namespace.name,
+		kind: namespace.kind,
+		readiness: namespace.readiness,
+		local_role: membership ?? null,
+		inherited_admin: !isMain && caller.admin === true,
+		can_enter: namespace.readiness === 'ready',
+		can_use_app: isMain ? caller.app === true : membership?.app_access === true,
+	};
 }
 
 /**
@@ -118,21 +170,11 @@ export async function listAccessibleNamespaces(
 	const data: NamespaceAccess[] = [];
 
 	for (const namespace of namespaces) {
-		const isMain = namespace.kind === 'main';
-		const membership = isMain ? mainRole : memberships.get(namespace.id);
+		const membership = namespace.kind === 'main' ? mainRole : memberships.get(namespace.id);
 
 		if (caller.admin !== true && membership === undefined) continue;
 
-		data.push({
-			id: namespace.id,
-			name: namespace.name,
-			kind: namespace.kind,
-			readiness: namespace.readiness,
-			local_role: membership ?? null,
-			inherited_admin: !isMain && caller.admin === true,
-			can_enter: namespace.readiness === 'ready',
-			can_use_app: isMain ? caller.app === true : membership?.app_access === true,
-		});
+		data.push(buildAccess(namespace, membership, caller));
 	}
 
 	// What a claim-less token would resolve to, so a client can render the same
@@ -147,4 +189,30 @@ export async function listAccessibleNamespaces(
 		null;
 
 	return { data, default: fallback };
+}
+
+/**
+ * The effective access for one namespace, shaped for a token response.
+ *
+ * `namespaceId` defaults to the configured default, which is what a claim-less
+ * token would resolve to. `namespace` is null when nothing resolves, so a client
+ * never has to guess whether the field is absent or empty.
+ */
+export async function describeNamespaceContext(
+	database: Knex,
+	caller: CallerIdentity,
+	namespaceId?: string
+): Promise<NamespaceContextPayload> {
+	const is_global_admin = caller.admin === true;
+	const target = namespaceId ?? getDefaultNamespace();
+
+	if (!target) return { is_global_admin, namespace: null };
+
+	const namespace = await getNamespace(database, target);
+
+	if (!namespace) return { is_global_admin, namespace: null };
+
+	const membership = await resolveRole(database, caller, namespace);
+
+	return { is_global_admin, namespace: buildAccess(namespace, membership, caller) };
 }

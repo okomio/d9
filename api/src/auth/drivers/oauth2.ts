@@ -261,7 +261,7 @@ export function createOAuth2AuthRouter(providerName: string): Router {
 				throw error;
 			}
 
-			const { accessToken, refreshToken, expires } = authResponse;
+			const { accessToken, refreshToken, expires, namespaceContext } = authResponse;
 
 			if (redirect) {
 				res?.cookie(env['ACCESS_TOKEN_COOKIE_NAME'], accessToken, ACCESS_COOKIE_OPTIONS);
@@ -270,7 +270,7 @@ export function createOAuth2AuthRouter(providerName: string): Router {
 			}
 
 			res.locals['payload'] = {
-				data: { access_token: accessToken, refresh_token: refreshToken, expires },
+				data: { access_token: accessToken, refresh_token: refreshToken, expires, ...namespaceContext },
 			};
 
 			next();

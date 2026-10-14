@@ -20,7 +20,7 @@ import { createRateLimiter } from '../rate-limiter.js';
 import type { AbstractServiceOptions, DirectusTokenPayload, LoginResult, Session, User } from '../types/index.js';
 import { getMilliseconds } from '../utils/get-milliseconds.js';
 import { stall } from '../utils/stall.js';
-import { canEnterNamespace } from '../virtual-namespace/access.js';
+import { canEnterNamespace, describeNamespaceContext } from '../virtual-namespace/access.js';
 import { readNamespaceClaim } from '../virtual-namespace/claims.js';
 import { ActivityService } from './activity.js';
 import { SettingsService } from './settings.js';
@@ -251,11 +251,23 @@ export class AuthenticationService {
 
 		await stall(STALL_TIME, timeStart);
 
+		const namespaceContext = await describeNamespaceContext(
+			this.knex,
+			{
+				user: user.id,
+				role: user.role ?? null,
+				admin: user.admin_access === true,
+				app: user.app_access === true,
+			},
+			requestedNamespace
+		);
+
 		return {
 			accessToken,
 			refreshToken,
 			expires: getMilliseconds(env['ACCESS_TOKEN_TTL']),
 			id: user.id,
+			namespaceContext,
 		};
 	}
 
@@ -473,11 +485,25 @@ export class AuthenticationService {
 			await this.knex('directus_users').update({ last_access: new Date() }).where({ id: record.user_id });
 		}
 
+		const namespaceContext = record.share_id
+			? { is_global_admin: false, namespace: null }
+			: await describeNamespaceContext(
+					this.knex,
+					{
+						user: record.user_id ?? null,
+						role: record.role_id ?? null,
+						admin: record.role_admin_access === true || record.role_admin_access == 1,
+						app: record.role_app_access === true || record.role_app_access == 1,
+					},
+					requestedNamespace
+				);
+
 		return {
 			accessToken,
 			refreshToken: newRefreshToken,
 			expires: getMilliseconds(env['ACCESS_TOKEN_TTL']),
 			id: record.user_id,
+			namespaceContext,
 		};
 	}
 
@@ -545,9 +571,21 @@ export class AuthenticationService {
 			issuer: 'directus',
 		});
 
+		const namespaceContext = await describeNamespaceContext(
+			this.knex,
+			{
+				user: accountability.user,
+				role: accountability.role ?? null,
+				admin: accountability.admin === true,
+				app: accountability.app === true,
+			},
+			requestedNamespace
+		);
+
 		return {
 			accessToken,
 			expires: getMilliseconds(env['ACCESS_TOKEN_TTL']),
+			namespaceContext,
 		};
 	}
 

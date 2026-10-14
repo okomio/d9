@@ -57,12 +57,15 @@ router.post(
 			schema: req.schema,
 		});
 
-		const { accessToken, expires } = await authenticationService.mintNamespaceToken(req.params['namespace']!);
+		const { accessToken, expires, namespaceContext } = await authenticationService.mintNamespaceToken(
+			req.params['namespace']!
+		);
 
 		res.locals['payload'] = {
 			data: {
 				access_token: accessToken,
 				expires,
+				...namespaceContext,
 			},
 		};
 

@@ -101,13 +101,13 @@ router.post(
 		// holding one shared answer.
 		const namespace = typeof req.body.namespace === 'string' ? req.body.namespace : undefined;
 
-		const { accessToken, refreshToken, expires } = await authenticationService.refresh(
+		const { accessToken, refreshToken, expires, namespaceContext } = await authenticationService.refresh(
 			currentRefreshToken,
 			namespace
 		);
 
 		const payload = {
-			data: { access_token: accessToken, expires },
+			data: { access_token: accessToken, expires, ...namespaceContext },
 		} as Record<string, Record<string, any>>;
 
 		if (mode === 'json') {

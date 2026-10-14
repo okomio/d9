@@ -179,13 +179,14 @@ export function createSAMLAuthRouter(providerName: string) {
 				const { extract } = await sp.parseLoginResponse(idp, 'post', req);
 
 				const authService = new AuthenticationService({ accountability: req.accountability, schema: req.schema });
-				const { accessToken, refreshToken, expires } = await authService.login(providerName, extract.attributes);
+				const { accessToken, refreshToken, expires, namespaceContext } = await authService.login(providerName, extract.attributes);
 
 				res.locals['payload'] = {
 					data: {
 						access_token: accessToken,
 						refresh_token: refreshToken,
 						expires,
+						...namespaceContext,
 					},
 				};
 
