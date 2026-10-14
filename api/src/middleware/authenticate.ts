@@ -9,6 +9,7 @@ import asyncHandler from '../utils/async-handler.js';
 import { getIPFromReq } from '../utils/get-ip-from-req.js';
 import isDirectusJWT from '../utils/is-directus-jwt.js';
 import { verifyAccessJWT } from '../utils/jwt.js';
+import { readNamespaceClaim } from '../virtual-namespace/claims.js';
 import { ACCESS_COOKIE_CLEAR_OPTIONS, REFRESH_COOKIE_CLEAR_OPTIONS } from '../constants.js';
 
 /**
@@ -81,6 +82,9 @@ export const handler = async (req: Request, _res: Response, next: NextFunction) 
 				if (payload.share) req.accountability.share = payload.share;
 				if (payload.share_scope) req.accountability.share_scope = payload.share_scope;
 				if (payload.id) req.accountability.user = payload.id;
+
+				const namespace = readNamespaceClaim(payload);
+				if (namespace) req.virtualNamespace = namespace;
 			} else {
 				// Try finding the user with the provided token
 				const user = await database

@@ -13,19 +13,57 @@ import logger from '../logger.js';
 import type { DatabaseClient } from '../types/index.js';
 import { getConfigFromEnv } from '../utils/get-config-from-env.js';
 import { validateEnv } from '../utils/validate-env.js';
+import { isVirtualNamespaceEnabled } from '../virtual-namespace/config.js';
+import { getActiveNamespace } from '../virtual-namespace/context.js';
 import { getHelpers } from './helpers/index.js';
 
 let database: Knex | null = null;
 let inspector: SchemaInspector | null = null;
 let databaseVersion: string | null = null;
 
+/** Virtual-namespace databases, keyed by namespace. */
+const namespaceDatabases = new Map<string, Knex>();
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default function getDatabase(): Knex {
+	if (isVirtualNamespaceEnabled()) {
+		const namespace = getActiveNamespace();
+
+		if (namespace) {
+			return getNamespaceDatabase(namespace);
+		}
+	}
+
 	if (database) {
 		return database;
 	}
 
+	database = buildDatabase();
+	validateDatabaseCharset(database);
+
+	return database;
+}
+
+/**
+ * Namespace databases are created once per namespace and cached. Their knex
+ * instance is scoped with `searchPath`, which also scopes the @wbce-d9/schema
+ * inspector used to build the namespace's schema.
+ */
+function getNamespaceDatabase(namespace: string): Knex {
+	const existing = namespaceDatabases.get(namespace);
+
+	if (existing) {
+		return existing;
+	}
+
+	const scoped = buildDatabase(namespace);
+	namespaceDatabases.set(namespace, scoped);
+
+	return scoped;
+}
+
+function buildDatabase(searchPathOverride?: string): Knex {
 	const {
 		client,
 		version,
@@ -75,7 +113,7 @@ export default function getDatabase(): Knex {
 	const knexConfig: Knex.Config = {
 		client,
 		version,
-		searchPath,
+		searchPath: searchPathOverride ?? searchPath,
 		connection: connectionString || connectionConfig,
 		log: {
 			warn: (msg) => {
@@ -141,12 +179,11 @@ export default function getDatabase(): Knex {
 		merge(knexConfig, { connection: { options: { useUTC: false } } });
 	}
 
-	database = knex.default(knexConfig);
-	validateDatabaseCharset(database);
+	const connection = knex.default(knexConfig);
 
 	const times: Record<string, number> = {};
 
-	database
+	connection
 		.on('query', (queryInfo) => {
 			times[queryInfo.__knexUid] = performance.now();
 		})
@@ -156,7 +193,7 @@ export default function getDatabase(): Knex {
 			delete times[queryInfo.__knexUid];
 		});
 
-	return database;
+	return connection;
 }
 
 export function getSchemaInspector(): SchemaInspector {

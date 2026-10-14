@@ -40,6 +40,7 @@ export type DirectusTokenPayload = {
 		item: string;
 	};
 	session_id: string;
+	namespace?: string;
 };
 
 export type ShareData = {

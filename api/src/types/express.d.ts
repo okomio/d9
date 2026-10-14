@@ -15,6 +15,7 @@ declare global {
 			schema: SchemaOverview;
 
 			accountability?: Accountability;
+			virtualNamespace?: string;
 			singleton?: boolean;
 		}
 	}

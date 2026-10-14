@@ -14,6 +14,7 @@ import { createRateLimiter } from '../rate-limiter.js';
 import type { AbstractServiceOptions, DirectusTokenPayload, LoginResult, Session, User } from '../types/index.js';
 import { getMilliseconds } from '../utils/get-milliseconds.js';
 import { stall } from '../utils/stall.js';
+import { readNamespaceClaim } from '../virtual-namespace/claims.js';
 import { ActivityService } from './activity.js';
 import { SettingsService } from './settings.js';
 import { TFAService } from './tfa.js';
@@ -183,13 +184,19 @@ export class AuthenticationService {
 			session_id: sessionId,
 		});
 
-		const tokenPayload = {
+		const tokenPayload: Record<string, any> = {
 			id: user.id,
 			role: user.role,
 			app_access: user.app_access,
 			admin_access: user.admin_access,
 			session_id: sessionId,
 		};
+
+		const requestedNamespace = readNamespaceClaim(payload);
+
+		if (requestedNamespace) {
+			tokenPayload['namespace'] = requestedNamespace;
+		}
 
 		const customClaims = await emitter.emitFilter(
 			'auth.jwt',

@@ -113,26 +113,31 @@ export async function getSystemCache(key: string): Promise<Record<string, any>> 
 	return await getCacheValue(systemCache, key);
 }
 
-export async function setSchemaCache(schema: SchemaOverview): Promise<void> {
+const schemaCacheKeys = (namespace?: string) =>
+	namespace ? { hash: `${namespace}:hash`, schema: `${namespace}:schema` } : { hash: 'hash', schema: 'schema' };
+
+export async function setSchemaCache(schema: SchemaOverview, namespace?: string): Promise<void> {
 	const { localSchemaCache, sharedSchemaCache } = getCache();
 	const schemaHash = await getSimpleHash(JSON.stringify(schema));
+	const keys = schemaCacheKeys(namespace);
 
-	await sharedSchemaCache.set('hash', schemaHash);
+	await sharedSchemaCache.set(keys.hash, schemaHash);
 
-	await localSchemaCache.set('schema', schema);
-	await localSchemaCache.set('hash', schemaHash);
+	await localSchemaCache.set(keys.schema, schema);
+	await localSchemaCache.set(keys.hash, schemaHash);
 }
 
-export async function getSchemaCache(): Promise<SchemaOverview | undefined> {
+export async function getSchemaCache(namespace?: string): Promise<SchemaOverview | undefined> {
 	const { localSchemaCache, sharedSchemaCache } = getCache();
+	const keys = schemaCacheKeys(namespace);
 
-	const sharedSchemaHash = await sharedSchemaCache.get('hash');
+	const sharedSchemaHash = await sharedSchemaCache.get(keys.hash);
 	if (!sharedSchemaHash) return;
 
-	const localSchemaHash = await localSchemaCache.get('hash');
+	const localSchemaHash = await localSchemaCache.get(keys.hash);
 	if (!localSchemaHash || localSchemaHash !== sharedSchemaHash) return;
 
-	return await localSchemaCache.get('schema');
+	return await localSchemaCache.get(keys.schema);
 }
 
 export async function setCacheValue(

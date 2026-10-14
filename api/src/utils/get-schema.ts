@@ -12,6 +12,7 @@ import { systemFieldRows } from '../database/system-data/fields/index.js';
 import env from '../env.js';
 import logger from '../logger.js';
 import { RelationsService } from '../services/relations.js';
+import { getActiveNamespace } from '../virtual-namespace/context.js';
 import getDefaultValue from './get-default-value.js';
 import getLocalType from './get-local-type.js';
 
@@ -28,12 +29,13 @@ export async function getSchema(options?: {
 	const schemaInspector = createInspector(database);
 
 	let result: SchemaOverview;
+	const namespace = getActiveNamespace();
 
 	if (!options?.bypassCache && env['CACHE_SCHEMA'] !== false) {
 		let cachedSchema;
 
 		try {
-			cachedSchema = await getSchemaCache();
+			cachedSchema = await getSchemaCache(namespace);
 		} catch (err: any) {
 			logger.warn(err, `[schema-cache] Couldn't retrieve cache. ${err}`);
 		}
@@ -44,7 +46,7 @@ export async function getSchema(options?: {
 			result = await getDatabaseSchema(database, schemaInspector);
 
 			try {
-				await setSchemaCache(result);
+				await setSchemaCache(result, namespace);
 			} catch (err: any) {
 				logger.warn(err, `[schema-cache] Couldn't save cache. ${err}`);
 			}
