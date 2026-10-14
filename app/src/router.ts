@@ -21,11 +21,6 @@ import {
 	internalDestination,
 	destinationAfterLogin,
 } from '@/namespaces/url';
-import NamespaceStaticRoute from '@/namespaces/static-route.vue';
-import GlobalUsers from '@/modules/users/routes/collection.vue';
-import GlobalUserItem from '@/modules/users/routes/item.vue';
-import GlobalNamespaces from '@/namespaces/global-admin/namespaces.vue';
-import GlobalOnboarding from '@/namespaces/global-admin/onboarding.vue';
 import { canManagePlatformResource } from '@/namespaces/capabilities';
 import { getRootPath } from '@/utils/get-root-path';
 import { createRouter, createWebHistory, NavigationGuard, NavigationHookAfter, RouteRecordRaw } from 'vue-router';
@@ -95,28 +90,28 @@ export const defaultRoutes: RouteRecordRaw[] = [
 	{
 		name: 'namespace-loading',
 		path: '/namespace/loading',
-		component: NamespaceStaticRoute,
+		component: () => import('@/namespaces/static-route.vue'),
 		props: { mode: 'loading' },
 		meta: { track: false },
 	},
 	{
 		name: 'namespace-choose',
 		path: '/namespace/choose',
-		component: NamespaceStaticRoute,
+		component: () => import('@/namespaces/static-route.vue'),
 		props: { mode: 'choose' },
 		meta: { track: false },
 	},
 	{
 		name: 'namespace-recover',
 		path: '/namespace/recover',
-		component: NamespaceStaticRoute,
+		component: () => import('@/namespaces/static-route.vue'),
 		props: { mode: 'recover' },
 		meta: { track: false },
 	},
 	{
 		name: 'namespace-landing',
 		path: '/namespace',
-		component: NamespaceStaticRoute,
+		component: () => import('@/namespaces/static-route.vue'),
 		props: { mode: 'landing' },
 		meta: { track: false },
 	},
@@ -129,27 +124,27 @@ export const defaultRoutes: RouteRecordRaw[] = [
 	{
 		name: 'global-admin-users',
 		path: '/global-admin/users',
-		component: GlobalUsers,
+		component: () => import('@/modules/users/routes/collection.vue'),
 		props: { platform: true },
 		meta: { namespacePlatform: true, track: false },
 	},
 	{
 		name: 'global-admin-onboarding',
 		path: '/global-admin/users/new',
-		component: GlobalOnboarding,
+		component: () => import('@/namespaces/global-admin/onboarding.vue'),
 		meta: { namespacePlatform: true, track: false },
 	},
 	{
 		name: 'global-admin-user',
 		path: '/global-admin/users/:primaryKey',
-		component: GlobalUserItem,
+		component: () => import('@/modules/users/routes/item.vue'),
 		props: (route) => ({ primaryKey: route.params.primaryKey, platform: true }),
 		meta: { namespacePlatform: true, track: false },
 	},
 	{
 		name: 'global-admin-namespaces',
 		path: '/global-admin/namespaces',
-		component: GlobalNamespaces,
+		component: () => import('@/namespaces/global-admin/namespaces.vue'),
 		meta: { namespacePlatform: true, track: false },
 	},
 ];
