@@ -4,7 +4,9 @@ Status: **Not started**. Owner: Martin. Required for the prototype. [Progress tr
 
 ## Outcome
 
-The admin shell shows the active namespace and offers only main/virtual namespaces the user may enter. Global Admin can enter every ready child without a local membership. Options update after namespace creation or access changes. Provisioning/failed/unavailable namespaces cannot be entered. Namespace creation is on C7's platform page.
+The admin shell shows the active virtual namespace and offers only children the user may enter. Global Admin can enter every ready child without a local membership. Options update after namespace creation or access changes. Provisioning/failed/unavailable namespaces cannot be entered. Namespace creation is on C7's platform page. Whether the internal legacy `main` workspace should be offered to Global Admins during migration remains an explicit decision.
+
+The product placement is the existing upper-left project header: show the parent project name and selected child as two levels inside that space, preserving the Directus shell. The backend `main` entry is internal compatibility state; never present it as “Main Virtual Namespace”. A user without an enterable child sees a static no-access/chooser state with no inherited main content. See the [backend-aligned plan](backend-aligned-delivery-plan.md) for the remaining legacy-main decision and current API fit.
 
 ## Dependencies
 
@@ -18,9 +20,9 @@ Component layout/fixtures can start after the listing/context shape is agreed. L
 ## Implementation checklist
 
 - [ ] Agree the adapter projection for available namespaces: ID, display name, main/virtual kind, readiness and effective enter/app access.
-- [ ] Add an explicit namespace label/picker near `app/src/views/private/components/project-info.vue`; keep shared project name separate.
-- [ ] Render main namespace only for users authorized to enter it; render inherited Global Admin children without manufacturing memberships.
-- [ ] Cover zero, one and many available namespaces, initial loading, list failure and removed active namespace.
+- [ ] Integrate the selector **inside** `app/src/views/private/components/project-info.vue`; display project and active child as two clear levels without a separate mock-shell row.
+- [ ] Keep the backend's `main` state available for compatible token/routing behavior; settle if Global Admin needs a visible legacy-main entry. Do not route ordinary users without child access to main content.
+- [ ] Cover zero, one and many available **virtual** namespaces, initial loading, list failure and removed active namespace; handle saved default when its profile contract exists.
 - [ ] Display provisioning/failed states and prevent entry before readiness; use stable IDs for selection.
 - [ ] Submit intent to C2; lock repeated selection during a switch and show source/target loading labels according to the shared lifecycle.
 - [ ] Refresh options after C7 creation/readiness and membership/authority revalidation. Reject stale listing responses and preserve the active stable ID if still permitted.

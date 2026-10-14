@@ -2,11 +2,13 @@
 
 This is the starting page for following frontend delivery. Each block has its own checklist, dependencies and completion evidence. The [shared implementation plan](frontend-implementation-plan.md) retains the audited architecture, D01–D14 decision register, common switch lifecycle and overall verification requirements. The [switch specification](frontend-switch-behaviour.md) defines expected behaviour.
 
+**Current planning baseline:** [Backend-aligned delivery plan](backend-aligned-delivery-plan.md) records the requested native Directus experience, the contracts present at `hackathon` `ccdb4d737`, gaps and the implementation order. It supersedes earlier mock UI assumptions. This is documentation work only; it does not mark any C block complete.
+
 ## Coverage and API references
 
 [Capability coverage](frontend-capability-coverage.md) confirms F1/F2 and required module/tool preservation. [API handoff](frontend-api-handoff.md) incorporates the endpoint inventory and current backend groundwork. These references do not mark frontend implementation complete.
 
-[Global administration design](global-admin-design.md) updates privileges, the namespace/role directory tree and multi-namespace create/invite forms. C5 owns user workflows; C7 owns namespace management and the shared Administration entry. D14 records the additional onboarding/directory API contract.
+[Global administration design](global-admin-design.md) updates privileges, the namespace/role directory tree and multi-namespace create/invite forms. C5 owns user workflows; C7 owns namespace management and the shared Administration entry. Namespace creation belongs only to the Virtual Namespaces view. D14 records the additional onboarding/directory API contract.
 
 ## Progress tracker
 

@@ -4,7 +4,7 @@ Status: **Not started**. Owner: Martin. Required for the prototype. [Progress tr
 
 ## Outcome
 
-In a child virtual namespace, an authorized local admin sees only its members and can find an existing shared user to assign/change/unassign a local role. Unassignment removes local access only. User creation, global-profile administration and the full directory remain in the main namespace. Local schema/flow/role screens preserve these boundaries. C5 also owns Global Admin Users: All Users → virtual namespace → local role filtering, and Create User/Invite User with multiple initial namespace-role rows. Initial onboarding is the permitted global assignment exception; later additions/role edits happen locally. See [global-admin-design.md](global-admin-design.md).
+In a child virtual namespace, the **existing Directus User Directory presentation** shows only its members. An authorized local admin finds an existing shared user to assign/change/unassign a local role; the `+` action opens Add existing user. Unassignment removes local access only. User creation, global-profile administration and the full directory belong to Global Administration. Local schema/flow/role screens preserve these boundaries. C5 also owns Global Admin Users: All Users → virtual namespace → local role filtering, and Create User/Invite User with multiple initial namespace-role rows. Initial onboarding is the permitted global assignment exception; later additions/role edits happen locally. See [global-admin-design.md](global-admin-design.md) and the [backend-aligned plan](backend-aligned-delivery-plan.md).
 
 ## Dependencies
 
@@ -24,13 +24,13 @@ Members/assignment page structure can start with agreed fixtures. Live assignmen
 - [ ] Prefill a selected directory namespace/role transparently, allow multiple rows and follow D14's no-membership-account decision.
 - [ ] Handle account+initial-membership transactions, read-back 204, existing/pending emails, ambiguous retries and invitation-delivery ordering through the D14 adapter. No duplicate account or silent partial access.
 - [ ] Show global-user memberships as a summary with Open namespace links; later membership changes use local Members, not a second global editor.
-- [ ] Reuse C7's Create namespace form from the sidebar, and refresh namespace/role/member projections after relevant changes. Distinguish inherited Global Admin from explicit local Administrator membership.
+- [ ] Refresh namespace/role/member projections after relevant changes. Create Namespace is on C7's Virtual Namespaces view, not in this Users sidebar. Distinguish inherited Global Admin from explicit local Administrator membership.
 - [ ] Verify one account with different roles in at least two namespaces; local role choices cannot grant platform authority.
 
 ## Local implementation checklist
 
 - [ ] Define member/lookup/local-role DTOs and lifecycle adapter operations under the active namespace.
-- [ ] Add a dedicated Members module/page gated by membership-management authority; ordinary content/shared-user read does not automatically expose admin controls.
+- [ ] Reuse the native User Directory module/page, navigation and layout conventions with a child-member data adapter and membership-specific actions. Ordinary content/shared-user read does not automatically expose admin controls; do not introduce a separate mock-style Members screen.
 - [ ] Load only active-namespace members and local role counts; clear list/filter/search/editor state through C2 on switch.
 - [ ] Add **Add existing user** search picker with minimal agreed fields, pagination/loading/errors and local-role selection. Do not preload/list the entire shared directory.
 - [ ] Add assign/change/unassign operations; handle existing member, inactive user, validation/concurrency and removed-access errors.

@@ -4,7 +4,7 @@ Status: **Not started**. Owner: Martin. Required for the prototype. [Progress tr
 
 ## Outcome
 
-Global Administration has Users and Virtual Namespaces views as described in [global-admin-design.md](global-admin-design.md). C5 owns the global directory/onboarding; C7 owns shared navigation, a reusable Create namespace form and the dedicated namespace-management view. A separate platform view lets Global Admins list virtual namespaces, create one, inspect provisioning status and explicitly enter a ready namespace. Global authority alone gates the page/API, independent of selected namespace. Creation does not switch context or copy old folder data.
+Global Administration is a **new vertical rail module** with Users and Virtual Namespaces views as described in [global-admin-design.md](global-admin-design.md). C5 owns the global directory/onboarding; C7 owns shared navigation and the dedicated namespace-management view. Global Admins list virtual namespaces, create one, inspect provisioning status and explicitly enter a ready namespace. Create Namespace belongs on the Virtual Namespaces view, not in the Users sidebar. Use the existing Directus list, selection and contextual action conventions. Global authority alone gates the page/API, independent of selected namespace. Creation does not switch context. Current backend provisioning copies an existing area's structure; the intended new-namespace creation mode is a backend/product decision in the [backend-aligned plan](backend-aligned-delivery-plan.md).
 
 ## Dependencies
 
@@ -18,11 +18,11 @@ Page/list/create fixtures can be developed once the platform adapter is agreed. 
 ## Implementation checklist
 
 - [ ] Provide shared Administration navigation for global Users and Virtual Namespaces with separate capability checks; a local admin cannot acquire either global capability through child admin_access.
-- [ ] Expose the same Create namespace form from the global Users sidebar; retain current directory filter/context and report readiness without automatic entry. Role creation and existing-user additions require explicit entry into the target.
+- [ ] Put Create Namespace on the Virtual Namespaces view. Keep role creation and existing-user additions inside the target namespace after explicit entry.
 
 - [ ] Define platform list/create/status adapter operations and Global Admin capability; do not infer it from current child role.
 - [ ] Add a separate authenticated platform route/navigation entry, guarded before any data/action side effects, including direct URL entry.
-- [ ] Load platform namespace list with loading/error/empty/readiness states; keep platform registry state separate from C2's local metadata.
+- [ ] Load the current Global Admin-visible namespace list with loading/error/empty/readiness states; keep platform registry state separate from C2's local metadata. Confirm whether `GET /namespaces` is sufficient for the final management list or requires a distinct platform projection.
 - [ ] Add create form with backend-aligned name/identifier/uniqueness validation, dirty guard and duplicate-submit prevention.
 - [ ] Submit creation through platform authority from any selected namespace. Retain selected content context while the request completes.
 - [ ] Report provisioning/pending/ready/failed status. Dispose any status polling when leaving/signing out; retain authorized platform data through ordinary content switches.
@@ -30,7 +30,7 @@ Page/list/create fixtures can be developed once the platform adapter is agreed. 
 - [ ] Refresh list and signal C1 options after create/readiness. Do not auto-enter or treat a legacy same-named folder as migrated content.
 - [ ] Enable **Enter namespace** only when ready/permitted; send intent to C2/C3/C4, never install a token or hydrate directly from this page.
 - [ ] Remove page/actions/data if Global Admin authority is lost; distinguish this from a generic provisioning/network error.
-- [ ] Handle first empty namespace correctly through C1/C3; local role/member setup uses C5 after entry under inherited admin access.
+- [ ] Handle the agreed new-namespace provisioning mode through C1/C3; local role/member setup uses C5 after entry under inherited admin access.
 - [ ] Verify platform authorization, creation/reconciliation and explicit entry with browser/API evidence.
 
 ## Existing and proposed code
@@ -43,7 +43,7 @@ New platform route/components and namespace registry adapter are proposed. Integ
 - [ ] Pending/failed namespace cannot be entered; ready creation updates choices without changing active context.
 - [ ] Duplicate clicks and unknown outcomes do not provision duplicate namespaces; status/errors follow the backend contract.
 - [ ] Explicit Enter uses the shared switch transaction and inherits admin access without a child membership.
-- [ ] New namespace is honestly empty unless separately seeded; authority loss/sign-out clears platform access/data.
+- [ ] The page reports the actual backend provisioning result; authority loss/sign-out clears platform access/data.
 
 Namespace rename/delete/reparent operations are not part of this block's currently agreed scope.
 

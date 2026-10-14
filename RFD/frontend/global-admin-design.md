@@ -6,7 +6,7 @@ This product clarification updates C5/C7. It defines the requested privileges an
 
 | Operation | Global Admin | Virtual Namespace Admin | Location |
 | --- | --- | --- | --- |
-| Create virtual namespace | Yes | No | Global Administration; namespace-management view or its shared create form |
+| Create virtual namespace | Yes | No | Global Administration → Virtual Namespaces |
 | Create/edit local roles | Yes, after entering target | Own namespace only | Target Settings → Roles & Permissions |
 | Add existing user / change or remove local assignment | Yes, after entering target | Own namespace only | Target Users/Members → Add User / assignment editor |
 | Create shared user / invite new user | Yes | No | Global Users; select initial namespace/role assignments |
@@ -19,14 +19,14 @@ Global Admin authority continues to inherit from main-namespace admin access. It
 
 ## Recommended frontend
 
-Use one Global Administration area with **Users** and **Virtual Namespaces** views. Their routes/capabilities stay distinct, but they share navigation and a reusable namespace-create form. This retains C7's dedicated management view while providing the directory shortcut requested by the user.
+Use one Global Administration area, reached through its **own icon in the vertical module rail**, with **Users** and **Virtual Namespaces** views. Their routes/capabilities stay distinct. Namespace creation is confined to the Virtual Namespaces view. Keep the existing Directus directory/list styling and behaviors; the former mock screen is not the target UI.
 
 The global Users sidebar follows this hierarchy:
 
 ```text
 Users
   All Users
-  Virtual Namespaces                 [+ Create namespace]
+  Virtual Namespaces
     Tracking
       Administrator
       Editor
@@ -42,10 +42,10 @@ Virtual Namespaces                   [management view]
 - Keep search, paging, existing supported layouts and directory tools. A global user's summary may show several namespace/role chips instead of one misleading primary role.
 - Distinguish navigation expansion from filter selection with separate expand controls. Use stable namespace/role IDs, independent of names; bookmark/deep-link the filter without changing the active content namespace.
 - Browsing this tree is a platform read. It does **not** mint a target content token, hydrate Content or trigger the namespace switcher. Only **Open/Enter namespace** invokes C2/C3/C4.
-- The sidebar **Create namespace** action opens C7's reusable form, returns to the current filter, and refreshes the directory tree/switcher after readiness. Provisioning remains on the namespace-management view. Neither creation nor filtering automatically enters a namespace.
+- The Users sidebar has no create-namespace action. C7's Virtual Namespaces view owns creation and refreshes the directory tree/switcher after readiness. Neither creation nor filtering automatically enters a namespace.
 - Preserve Invite User and Create User actions. “Create User” is a clearer label for the screenshot's generic “Create Item”; final labels/icons are a UI choice.
 
-The Virtual Namespaces view owns registry/readiness/create/error/reconciliation and explicit entry. Role creation and existing-user addition are reached by entering the target, not by adding role editors to the global sidebar.
+The Virtual Namespaces view owns registry/readiness/create/error/reconciliation and explicit entry. Its list, row selection and supported contextual actions should use the original Directus patterns. Role creation and existing-user addition are reached by entering the target, not by adding role editors to the global sidebar. The backend currently has no platform create/status/edit/delete HTTP operation, so the live form and mutation actions wait for D06 rather than reporting mock success.
 
 Global Admins have inherited access without membership rows. A namespace member filter lists explicit memberships; show inherited Global Admin access separately as a banner or section. A local role filter means assignment to that role, not every account with effective inherited admin authority. This prevents an “Administrator” filter from silently mixing two different access sources.
 
@@ -70,7 +70,7 @@ Show the result clearly: account/invitation status, successful initial assignmen
 
 ## Local Add User
 
-Inside a virtual namespace, a local admin selects **Add User**, searches eligible existing accounts in the main namespace's shared directory, and selects one of the active namespace's roles. The local member list never becomes the full shared directory. This picker creates a membership, not an account/invitation/global-profile change. Server lookup returns only agreed identity fields and validates eligibility/role ownership. Removing this assignment affects only this namespace.
+Inside a virtual namespace, a local admin selects **Add User** from the native User Directory, searches eligible existing shared accounts through the narrow lookup endpoint, and selects one of the active namespace's roles. The local directory never becomes the full shared directory. This picker creates a membership, not an account/invitation/global-profile change. Server lookup returns only agreed identity fields and validates eligibility/role ownership. Removing this assignment affects only this namespace.
 
 ## Membership model
 
@@ -81,7 +81,7 @@ Global filters query memberships rather than `directus_users.role`. Filter befor
 ## Ownership and open dependency
 
 - **C5:** global user directory/tree, global create/invite initial-assignment forms, local Members/roles and their strict operation boundaries.
-- **C7:** global Administration entry/namespace-management view and reusable Create namespace form/registry changes. Global user authority and namespace-management authority remain separate capability checks.
+- **C7:** global Administration rail entry, namespace-management view and its Create Namespace form/registry changes. Global user authority and namespace-management authority remain separate capability checks.
 - **C3:** global directory filter URL and explicit entry; filter selection never becomes active content namespace selection.
 - **C2/C4:** scoped state/request/access isolation and actual Enter transactions; global directory reads use explicit authorized projections, not content-token switching.
 - **D14:** global directory namespace/role reads, distinct counts, account/invite with initial memberships, cross-namespace role validation, no-membership accounts, existing/pending emails, transaction/idempotency and invitation-delivery ordering. Endpoint inventory's current single-role invite/create operations do not provide this contract.
@@ -93,7 +93,7 @@ Global filters query memberships rather than `directus_users.role`. Filter befor
 - [ ] Changing a namespace row clears its role; stale lookup cannot select a role for another namespace.
 - [ ] A local admin adds an existing user locally and cannot create/invite/edit a global profile or operate on another namespace.
 - [ ] Global namespace/role filters preserve the active content token/context; Open namespace uses the real switch transaction.
-- [ ] Global role creation and later membership edits occur in the target namespace; sidebar create reuses C7 without implicit switching.
+- [ ] Global role creation and later membership edits occur in the target namespace; namespace creation occurs only in C7 without implicit switching.
 - [ ] Inherited Global Admin access is labelled separately from explicit local role membership, and pagination/counts reflect the selected membership filter.
 
 No application implementation, account creation, email sending or runtime verification is performed by this design update.
