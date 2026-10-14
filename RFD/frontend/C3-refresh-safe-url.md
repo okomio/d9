@@ -29,6 +29,8 @@ Chooser/landing/platform routes remain reachable without dynamic Content routes.
 
 ## Implementation checklist
 
+- [ ] Global Users namespace/role filters use distinct platform filter state/URL keys, never the active content namespace hint. Preserve filter deep links without token switching; only Open namespace calls the coordinator. See [global administration design](global-admin-design.md).
+
 - [ ] Agree D13 and add parser/canonicalizer for stable namespace IDs and internal destination intents.
 - [ ] Add static chooser/loading/landing routes and transaction permit; ensure route guards can run before dynamic module registration.
 - [ ] Refactor first-load `router.ts` ordering: resolve target, obtain matching access via C4, then authorize C2 hydration.

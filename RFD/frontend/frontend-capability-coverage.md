@@ -12,6 +12,8 @@ The agreed privilege boundaries remain: users/global profiles are managed in the
 
 Missing ownership/API decisions block completion of the affected feature. They are not permission to drop it from the final namespace workspace. A reduced temporary demo must name its missing functionality and cannot be reported as the completed feature. C6's optional scope is distinct namespace branding, not the existing Settings or Translation Strings feature.
 
+Global user administration now also includes [namespace/role directory filtering and multi-namespace onboarding](global-admin-design.md). Creating/inviting an account may assign its initial local roles globally; general existing-user additions/role changes remain local. Each membership holds one local role; a user may have many memberships.
+
 ## F1 — switch-behaviour traceability
 
 Every requested F1 surface was included and analysed in [frontend-switch-behaviour.md](frontend-switch-behaviour.md), with source findings in [frontend-discovery.md](frontend-discovery.md). Implementation and evidence remain pending.
@@ -32,7 +34,7 @@ Additional analysed surfaces include flows/webhooks/operations, Insights, notifi
 
 ## F2 — foundation/skeleton handoff
 
-F2 is included in the shared [D01–D13 decision register](frontend-implementation-plan.md#4-backend-handoff-and-unresolved-decisions) and the client building-block plan. The required interface shape is proposed and reviewed; live APIs and agreed wire DTOs are still open. Backend Foundation owns request/auth/storage enforcement; the frontend skeleton implements the client store/hooks using that contract.
+F2 is included in the shared [D01–D14 decision register](frontend-implementation-plan.md#4-backend-handoff-and-unresolved-decisions) and the client building-block plan. The required interface shape is proposed and reviewed; live APIs and agreed wire DTOs are still open. Backend Foundation owns request/auth/storage enforcement; the frontend skeleton implements the client store/hooks using that contract.
 
 | F2 requirement | Skeleton must expose | Foundation/API dependency | Frontend owner |
 | --- | --- | --- | --- |
@@ -76,6 +78,6 @@ Settings section labels and Users-versus-Members presentation are implementation
 - [ ] With a local namespace admin, exercise Content, Files, local member/role administration and each applicable local Settings section. Any shared/global-only field/action has a documented scope rule rather than a blanket removal of the feature.
 - [ ] Confirm ordinary-role visibility restrictions still work and local admin cannot create users/edit global profiles/create namespaces or edit shared platform settings.
 - [ ] Compare both namespaces' metadata/presets/files/flows/settings through repeated switches and colliding IDs; no old state survives under the new label.
-- [ ] Required module/tool coverage is complete and applicable D01–D13 decisions are resolved. Missing Files/Settings/right-side capabilities are not accepted as completion; C6 may remain optional.
+- [ ] Required module/tool coverage is complete and applicable D01–D14 decisions are resolved. Missing Files/Settings/right-side capabilities are not accepted as completion; C6 may remain optional.
 
 These checks feed C2/C5 and overall D1/D2/D3 completion. No feature implementation or runtime test was performed during this coverage clarification.

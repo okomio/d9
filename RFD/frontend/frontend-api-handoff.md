@@ -30,6 +30,10 @@ The namespace middleware runs before controllers, with no explicit path-based co
 
 The inventory confirms existing Content/Files/Settings/tool endpoints. It does not define available-namespace listing, namespace-aware token mint/refresh, local membership CRUD or platform provisioning APIs. D01–D06 remain open contracts, with partial runtime groundwork noted above. Existing Settings singleton classification does not authorize dropping Settings or Translation Strings; capability preservation is specified in [frontend-capability-coverage.md](frontend-capability-coverage.md).
 
+## Global user onboarding contract update
+
+[global-admin-design.md](global-admin-design.md) extends C5/C7: global directory reads/filtering and Create User/Invite User need multiple `(namespace_id, role_id)` initial assignments. Current `/users` and `/users/invite` expose a single global primary role; sending that field does not implement membership onboarding. D14 must define explicit global projections, server-side pair validation/distinct pagination, coherent account+memberships transaction/idempotency and invitation ordering. General existing-user additions/role changes and role creation stay local.
+
 ## Integration acceptance additions
 
 - [ ] Verify representative permitted and forbidden current endpoints with a member, local admin and inherited Global Admin; validate effective flags/identity before hydration.
