@@ -10,6 +10,7 @@ import logger from '../logger.js';
 import { RolesService } from '../services/roles.js';
 import { UsersService } from '../services/users.js';
 import { mergePermissions } from '../utils/merge-permissions.js';
+import { getActiveNamespace } from '../virtual-namespace/context.js';
 import { mergePermissionsForShare } from './merge-permissions-for-share.js';
 
 export async function getPermissions(accountability: Accountability, schema: SchemaOverview) {
@@ -19,7 +20,8 @@ export async function getPermissions(accountability: Accountability, schema: Sch
 	let permissions: Permission[] = [];
 
 	const { user, role, app, admin, share_scope } = accountability;
-	const cacheKey = `permissions-${hash({ user, role, app, admin, share_scope })}`;
+	const namespace = getActiveNamespace();
+	const cacheKey = `permissions-${hash({ user, role, app, admin, share_scope, namespace })}`;
 
 	if (cache && env['CACHE_PERMISSIONS'] !== false) {
 		let cachedPermissions;
@@ -37,7 +39,7 @@ export async function getPermissions(accountability: Accountability, schema: Sch
 
 			const cachedFilterContext = await getCacheValue(
 				cache,
-				`filterContext-${hash({ user, role, permissions: cachedPermissions['permissions'] })}`
+				`filterContext-${hash({ user, role, permissions: cachedPermissions['permissions'], namespace })}`
 			);
 
 			if (cachedFilterContext) {
@@ -56,7 +58,7 @@ export async function getPermissions(accountability: Accountability, schema: Sch
 					: {};
 
 				if (containDynamicData && env['CACHE_ENABLED'] !== false) {
-					await setCacheValue(cache, `filterContext-${hash({ user, role, permissions })}`, filterContext);
+					await setCacheValue(cache, `filterContext-${hash({ user, role, permissions, namespace })}`, filterContext);
 				}
 
 				return processPermissions(accountability, permissions, filterContext);
@@ -103,7 +105,7 @@ export async function getPermissions(accountability: Accountability, schema: Sch
 			await setSystemCache(cacheKey, { permissions, containDynamicData });
 
 			if (containDynamicData && env['CACHE_ENABLED'] !== false) {
-				await setCacheValue(cache, `filterContext-${hash({ user, role, permissions })}`, filterContext);
+				await setCacheValue(cache, `filterContext-${hash({ user, role, permissions, namespace })}`, filterContext);
 			}
 		}
 

@@ -11,3 +11,16 @@ export function isVirtualNamespaceEnabled(): boolean {
 export function getDefaultNamespace(): string | undefined {
 	return process.env['VIRTUAL_NAMESPACES_DEFAULT'] ?? undefined;
 }
+
+/**
+ * The `X-Namespace` header exists for local debugging and tooling only.
+ *
+ * It is not a switch mechanism: the namespace claim of a server-issued token is
+ * authoritative. Refused in production regardless of configuration so a client
+ * can never choose where the server reads from.
+ */
+export function isNamespaceHeaderEnabled(): boolean {
+	if (process.env['NODE_ENV'] === 'production') return false;
+
+	return process.env['VIRTUAL_NAMESPACES_ALLOW_HEADER'] === 'true';
+}
