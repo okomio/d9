@@ -135,11 +135,11 @@
 
 				<v-button
 					v-if="platform"
-					v-tooltip.bottom="'Invite User (D14)'"
+					v-tooltip.bottom="t('invite_users')"
 					rounded
 					icon
 					secondary
-					:to="{ path: '/global-admin/users/new', query: { mode: 'invite' } }"
+					@click="userInviteModalActive = true"
 				>
 					<v-icon name="person_add" />
 				</v-button>
@@ -177,6 +177,13 @@
 			</v-info>
 
 			<users-invite v-if="canInviteUsers && !platform" v-model="userInviteModalActive" @update:model-value="refresh" />
+			<users-invite
+				v-if="platform"
+				v-model="userInviteModalActive"
+				platform
+				:initial-namespace-id="typeof $route.query.admin_ns === 'string' ? $route.query.admin_ns : null"
+				:initial-role-id="typeof $route.query.admin_role === 'string' ? $route.query.admin_role : null"
+			/>
 
 			<component :is="`layout-${layout}`" v-bind="layoutState">
 				<template #no-results>
@@ -260,7 +267,7 @@
 
 <script lang="ts" setup>
 import UsersInvite from '@/views/private/components/users-invite.vue';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import UsersNavigation from '../components/navigation.vue';
 import GlobalNavigation from '@/namespaces/global-admin/navigation.vue';
@@ -319,6 +326,22 @@ const layoutRef = ref();
 const selection = ref<Item[]>([]);
 
 const router = useRouter();
+
+watch(
+	() => route.query.invite,
+	(invite) => {
+		if (props.platform && invite === '1') userInviteModalActive.value = true;
+	},
+	{ immediate: true }
+);
+
+watch(userInviteModalActive, (open) => {
+	if (props.platform && !open && route.query.invite === '1') {
+		const query = { ...route.query };
+		delete query.invite;
+		void router.replace({ query });
+	}
+});
 
 const bookmark = computed(() => (props?.bookmark ? +props.bookmark : null));
 

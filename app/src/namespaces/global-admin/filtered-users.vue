@@ -6,11 +6,11 @@
 				<v-icon name="refresh" />
 			</v-button>
 			<v-button
-				v-tooltip.bottom="'Invite User (D14)'"
+				v-tooltip.bottom="'Invite Users'"
 				rounded
 				icon
 				secondary
-				:to="{ path: '/global-admin/users/new', query: { mode: 'invite', admin_ns: namespaceId, admin_role: roleId } }"
+				@click="inviteModalActive = true"
 			>
 				<v-icon name="person_add" />
 			</v-button>
@@ -29,6 +29,12 @@
 				and counts require D14.
 			</sidebar-detail>
 		</template>
+		<users-invite
+			v-model="inviteModalActive"
+			platform
+			:initial-namespace-id="namespaceId"
+			:initial-role-id="roleId"
+		/>
 		<div class="directory">
 			<v-notice v-if="!namespaceId" type="warning">Choose a virtual namespace to filter users.</v-notice>
 			<v-notice v-if="roleId" type="warning">
@@ -76,6 +82,7 @@ import type { HeaderRaw } from '@/components/v-table/types';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import GlobalNavigation from './navigation.vue';
+import UsersInvite from '@/views/private/components/users-invite.vue';
 
 type Member = {
 	user_id: string;
@@ -96,12 +103,29 @@ const namespaceName = computed(
 );
 
 const members = ref<Member[]>([]);
+const inviteModalActive = ref(false);
 const total = ref(0);
 const loading = ref(false);
 const error = ref<string | null>(null);
 const search = ref('');
 const offset = ref(0);
 const pageSize = 50;
+
+watch(
+	() => route.query.invite,
+	(invite) => {
+		if (invite === '1') inviteModalActive.value = true;
+	},
+	{ immediate: true }
+);
+
+watch(inviteModalActive, (open) => {
+	if (!open && route.query.invite === '1') {
+		const query = { ...route.query };
+		delete query.invite;
+		void router.replace({ query });
+	}
+});
 
 const headers = ref<HeaderRaw[]>([
 	{ text: 'Name', value: 'name', width: 240 },

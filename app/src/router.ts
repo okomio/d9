@@ -132,6 +132,12 @@ export const defaultRoutes: RouteRecordRaw[] = [
 		name: 'global-admin-onboarding',
 		path: '/global-admin/users/new',
 		component: () => import('@/namespaces/global-admin/onboarding.vue'),
+		beforeEnter: (to) => {
+			if (to.query.mode !== 'invite') return true;
+			const query = { ...to.query };
+			delete query.mode;
+			return { path: '/global-admin/users', query: { ...query, invite: '1' } };
+		},
 		meta: { namespacePlatform: true, track: false },
 	},
 	{
