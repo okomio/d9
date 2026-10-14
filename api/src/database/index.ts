@@ -57,13 +57,13 @@ function getNamespaceDatabase(namespace: string): Knex {
 		return existing;
 	}
 
-	const scoped = buildDatabase(namespace);
+	const scoped = buildDatabase([namespace, 'public']);
 	namespaceDatabases.set(namespace, scoped);
 
 	return scoped;
 }
 
-function buildDatabase(searchPathOverride?: string): Knex {
+function buildDatabase(searchPathOverride?: string | string[]): Knex {
 	const {
 		client,
 		version,
