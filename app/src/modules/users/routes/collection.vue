@@ -1,6 +1,7 @@
 <template>
 	<component
 		:is="layoutWrapper"
+		v-if="!platform || !platformFilter"
 		ref="layoutRef"
 		v-slot="{ layoutState }"
 		v-model:selection="selection"
@@ -27,7 +28,7 @@
 			<template #title-outer:append>
 				<div class="bookmark-controls">
 					<bookmark-add
-						v-if="!bookmark"
+						v-if="!bookmark && !platform"
 						v-model="bookmarkDialogActive"
 						class="add"
 						:saving="creatingBookmark"
@@ -38,9 +39,9 @@
 						</template>
 					</bookmark-add>
 
-					<v-icon v-else-if="bookmarkSaved" class="saved" name="bookmark" />
+					<v-icon v-else-if="bookmarkSaved && !platform" class="saved" name="bookmark" />
 
-					<template v-else-if="bookmarkIsMine">
+					<template v-else-if="bookmarkIsMine && !platform">
 						<v-icon
 							v-tooltip.bottom="t('update_bookmark')"
 							class="save"
@@ -51,7 +52,7 @@
 					</template>
 
 					<bookmark-add
-						v-else
+						v-else-if="!platform"
 						v-model="bookmarkDialogActive"
 						class="add"
 						:saving="creatingBookmark"
@@ -63,7 +64,7 @@
 					</bookmark-add>
 
 					<v-icon
-						v-if="bookmark && !bookmarkSaving && bookmarkSaved === false"
+						v-if="bookmark && !bookmarkSaving && bookmarkSaved === false && !platform"
 						v-tooltip.bottom="t('reset_bookmark')"
 						name="settings_backup_restore"
 						clickable
@@ -110,7 +111,7 @@
 				</v-dialog>
 
 				<v-button
-					v-if="selection.length > 0"
+					v-if="selection.length > 0 && !platform"
 					v-tooltip.bottom="batchEditAllowed ? t('edit') : t('not_allowed')"
 					rounded
 					icon
@@ -122,7 +123,7 @@
 				</v-button>
 
 				<v-button
-					v-if="canInviteUsers"
+					v-if="canInviteUsers && !platform"
 					v-tooltip.bottom="t('invite_users')"
 					rounded
 					icon
@@ -133,18 +134,30 @@
 				</v-button>
 
 				<v-button
-					v-tooltip.bottom="createAllowed ? t('create_item') : t('not_allowed')"
+					v-if="platform"
+					v-tooltip.bottom="'Invite User (D14)'"
 					rounded
 					icon
-					:to="addNewLink"
-					:disabled="createAllowed === false"
+					secondary
+					:to="{ path: '/global-admin/users/new', query: { mode: 'invite' } }"
+				>
+					<v-icon name="person_add" />
+				</v-button>
+
+				<v-button
+					v-tooltip.bottom="platform ? 'Create User (D14)' : createAllowed ? t('create_item') : t('not_allowed')"
+					rounded
+					icon
+					:to="platform ? { path: '/global-admin/users/new', query: { admin_ns: $route.query.admin_ns } } : addNewLink"
+					:disabled="!platform && createAllowed === false"
 				>
 					<v-icon name="add" />
 				</v-button>
 			</template>
 
 			<template #navigation>
-				<users-navigation :current-role="role" current-collection="directus_users" />
+				<global-navigation v-if="platform" />
+				<users-navigation v-else :current-role="role" current-collection="directus_users" />
 			</template>
 
 			<v-info
@@ -163,15 +176,23 @@
 				</template>
 			</v-info>
 
-			<users-invite v-if="canInviteUsers" v-model="userInviteModalActive" @update:model-value="refresh" />
+			<users-invite v-if="canInviteUsers && !platform" v-model="userInviteModalActive" @update:model-value="refresh" />
 
 			<component :is="`layout-${layout}`" v-bind="layoutState">
 				<template #no-results>
 					<v-info v-if="!filter && !search" :title="t('user_count', 0)" icon="people_alt" center>
 						{{ t('no_users_copy') }}
 
-						<template v-if="canInviteUsers" #append>
-							<v-button :to="role ? { path: `/users/roles/${role}/+` } : { path: '/users/+' }">
+						<template v-if="canInviteUsers || platform" #append>
+							<v-button
+								:to="
+									platform
+										? '/global-admin/users/new'
+										: role
+										? { path: `/users/roles/${role}/+` }
+										: { path: '/users/+' }
+								"
+							>
 								{{ t('create_user') }}
 							</v-button>
 						</template>
@@ -190,8 +211,16 @@
 					<v-info :title="t('user_count', 0)" icon="people_alt" center>
 						{{ t('no_users_copy') }}
 
-						<template v-if="canInviteUsers" #append>
-							<v-button :to="role ? { path: `/users/roles/${role}/+` } : { path: '/users/+' }">
+						<template v-if="canInviteUsers || platform" #append>
+							<v-button
+								:to="
+									platform
+										? '/global-admin/users/new'
+										: role
+										? { path: `/users/roles/${role}/+` }
+										: { path: '/users/+' }
+								"
+							>
 								{{ t('create_user') }}
 							</v-button>
 						</template>
@@ -200,6 +229,7 @@
 			</component>
 
 			<drawer-batch
+				v-if="!platform"
 				v-model:active="batchEditActive"
 				:primary-keys="selection"
 				collection="directus_users"
@@ -225,6 +255,7 @@
 			</template>
 		</private-view>
 	</component>
+	<filtered-users v-else />
 </template>
 
 <script lang="ts" setup>
@@ -232,6 +263,9 @@ import UsersInvite from '@/views/private/components/users-invite.vue';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import UsersNavigation from '../components/navigation.vue';
+import GlobalNavigation from '@/namespaces/global-admin/navigation.vue';
+import FilteredUsers from '@/namespaces/global-admin/filtered-users.vue';
+import { useRoute } from 'vue-router';
 
 import api from '@/api';
 import { usePreset } from '@/composables/use-preset';
@@ -258,12 +292,20 @@ type Item = {
 interface Props {
 	role?: string | null;
 	bookmark?: string | null;
+	platform?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
 	role: null,
 	bookmark: null,
+	platform: false,
 });
+
+const route = useRoute();
+
+const platformFilter = computed(
+	() => props.platform && (typeof route.query.admin_ns === 'string' || typeof route.query.admin_role === 'string')
+);
 
 const { t } = useI18n();
 
