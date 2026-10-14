@@ -11,6 +11,7 @@ import type { Helpers } from '../database/helpers/index.js';
 import { getHelpers } from '../database/helpers/index.js';
 import getDatabase, { getDatabaseClient, getSchemaInspector } from '../database/index.js';
 import { systemCollectionRows } from '../database/system-data/collections/index.js';
+import { listOwnedCollections } from '../virtual-namespace/ownership.js';
 import emitter from '../emitter.js';
 import env from '../env.js';
 import { ForbiddenException, InvalidPayloadException } from '../exceptions/index.js';
@@ -262,6 +263,17 @@ export class CollectionsService {
 		})) as CollectionMeta[];
 
 		meta.push(...systemCollectionRows);
+
+		// Isolation, not just routing: the inspector reports every table in the
+		// `search_path` schemas, so without this a namespace lists the collections
+		// of every other area that still lives in `public`. Only the table list
+		// needs filtering — `meta` is already namespace-scoped by shadowing, and
+		// folder rows are metadata-only, so filtering it would drop them.
+		const owned = await listOwnedCollections(this.knex);
+
+		if (owned) {
+			tablesInDatabase = tablesInDatabase.filter((table) => owned.has(table.name));
+		}
 
 		if (this.accountability && this.accountability.admin !== true) {
 			const collectionsGroups: { [key: string]: string } = meta.reduce(

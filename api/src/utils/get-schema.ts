@@ -13,6 +13,7 @@ import env from '../env.js';
 import logger from '../logger.js';
 import { RelationsService } from '../services/relations.js';
 import { getActiveNamespace } from '../virtual-namespace/context.js';
+import { listOwnedCollections } from '../virtual-namespace/ownership.js';
 import getDefaultValue from './get-default-value.js';
 import getLocalType from './get-local-type.js';
 
@@ -66,6 +67,12 @@ async function getDatabaseSchema(database: Knex, schemaInspector: SchemaInspecto
 
 	const schemaOverview = await schemaInspector.overview();
 
+	// Scoping `search_path` gives shadowing for data reads, but the inspector
+	// selects tables by `relnamespace IN (...)`, so without this the overview is
+	// the *union* of the namespace's tables and every table still in `public` —
+	// and a namespace would list and read every other area's collections.
+	const owned = await listOwnedCollections(database);
+
 	const collections = [
 		...(await database
 			.select('collection', 'singleton', 'note', 'sort_field', 'accountability', 'check_filter')
@@ -74,6 +81,8 @@ async function getDatabaseSchema(database: Knex, schemaInspector: SchemaInspecto
 	];
 
 	for (const [collection, info] of Object.entries(schemaOverview)) {
+		if (owned && !owned.has(collection)) continue;
+
 		if (toArray(env['DB_EXCLUDE_TABLES']).includes(collection)) {
 			logger.trace(`Collection "${collection}" is configured to be excluded and will be ignored`);
 			continue;
