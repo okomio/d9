@@ -6,7 +6,7 @@ Audited 2026-10-14 against `hackathon` / `v12.0.7` (`1c2506b24`). This document 
 
 The feature is achievable in the existing Vue/Pinia application if the backend provides namespace isolation, per-tab authentication context and effective administration capabilities. The original switch spec covered most visible surfaces but lacked a construction sequence, reliable write tracking, explicit readiness/failure states and complete local-versus-platform admin integration.
 
-Use [frontend-switch-behaviour.md](frontend-switch-behaviour.md) for required behaviour and [frontend-implementation-plan.md](frontend-implementation-plan.md) for shared architecture, dependency decisions D01–D13 and verification, and [README.md](README.md) for C1–C7 building blocks and progress. The tracker owns delivery status/checklists; the shared plan owns unresolved decisions and the common switch lifecycle.
+Use [frontend-switch-behaviour.md](frontend-switch-behaviour.md) for required behaviour and [frontend-implementation-plan.md](frontend-implementation-plan.md) for shared architecture, dependency decisions D01–D14 and verification, and [README.md](README.md) for C1–C7 building blocks and progress. The tracker owns delivery status/checklists; the shared plan owns unresolved decisions and the common switch lifecycle.
 
 ## Confirmed source findings
 

@@ -4,7 +4,7 @@ Status: **Not started**. Owner: Martin. Required for the prototype. [Progress tr
 
 ## Outcome
 
-A separate platform page lets Global Admins list virtual namespaces, create one, inspect provisioning status and explicitly enter a ready namespace. Global authority alone gates the page/API, independent of selected namespace. Creation does not switch context or copy old folder data.
+Global Administration has Users and Virtual Namespaces views as described in [global-admin-design.md](global-admin-design.md). C5 owns the global directory/onboarding; C7 owns shared navigation, a reusable Create namespace form and the dedicated namespace-management view. A separate platform view lets Global Admins list virtual namespaces, create one, inspect provisioning status and explicitly enter a ready namespace. Global authority alone gates the page/API, independent of selected namespace. Creation does not switch context or copy old folder data.
 
 ## Dependencies
 
@@ -16,6 +16,9 @@ A separate platform page lets Global Admins list virtual namespaces, create one,
 Page/list/create fixtures can be developed once the platform adapter is agreed. Real schema provisioning is Foundation work; the frontend reports its result.
 
 ## Implementation checklist
+
+- [ ] Provide shared Administration navigation for global Users and Virtual Namespaces with separate capability checks; a local admin cannot acquire either global capability through child admin_access.
+- [ ] Expose the same Create namespace form from the global Users sidebar; retain current directory filter/context and report readiness without automatic entry. Role creation and existing-user additions require explicit entry into the target.
 
 - [ ] Define platform list/create/status adapter operations and Global Admin capability; do not infer it from current child role.
 - [ ] Add a separate authenticated platform route/navigation entry, guarded before any data/action side effects, including direct URL entry.

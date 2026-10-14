@@ -4,17 +4,30 @@ Status: **Not started**. Owner: Martin. Required for the prototype. [Progress tr
 
 ## Outcome
 
-In a child virtual namespace, an authorized local admin sees only its members and can find an existing shared user to assign/change/unassign a local role. Unassignment removes local access only. User creation, global-profile administration and the full directory remain in the main namespace. Local schema/flow/role screens preserve these boundaries.
+In a child virtual namespace, an authorized local admin sees only its members and can find an existing shared user to assign/change/unassign a local role. Unassignment removes local access only. User creation, global-profile administration and the full directory remain in the main namespace. Local schema/flow/role screens preserve these boundaries. C5 also owns Global Admin Users: All Users → virtual namespace → local role filtering, and Create User/Invite User with multiple initial namespace-role rows. Initial onboarding is the permitted global assignment exception; later additions/role edits happen locally. See [global-admin-design.md](global-admin-design.md).
 
 ## Dependencies
 
+- **D14:** global membership-filtered directory/projections, namespace-specific role reads and coherent create/invite with initial memberships, errors/idempotency and invitation ordering. C7 supplies shared Administration navigation/create-namespace form; C3 preserves directory filters without a content switch.
 - **D05:** member list/lookup/lifecycle API, allowed lookup fields, pagination, duplicates/inactive users, local counts, role deletion and self/last-admin removal policy.
 - **C2–C4:** effective local/platform access, request context, reset/hydration and guarded navigation.
 - **D09/D11:** shared Settings/schema restrictions and local metadata/flows. **D08:** public-role policy if exposed. **D10:** self-service/profile links.
 
 Members/assignment page structure can start with agreed fixtures. Live assignment and local role lifecycle need backend enforcement; a filtered `/users` page alone is insufficient.
 
-## Implementation checklist
+## Global user-management checklist
+
+- [ ] Add global Users navigation: All Users, expandable virtual namespaces and scoped role filters; preserve existing directory search/layout/paging tools and explicit Create User/Invite User actions.
+- [ ] Use explicit authorized platform reads for role/membership filters without changing active content token/context. Query membership filters before pagination and return distinct users/counts.
+- [ ] Add repeatable namespace/role rows to global create/invite forms; changing namespace clears role, stale reads cannot populate another row and duplicate namespaces are rejected.
+- [ ] Source every role from its selected namespace; require ready namespaces and existing local roles. Create roles by entering the target, not inside the global form.
+- [ ] Prefill a selected directory namespace/role transparently, allow multiple rows and follow D14's no-membership-account decision.
+- [ ] Handle account+initial-membership transactions, read-back 204, existing/pending emails, ambiguous retries and invitation-delivery ordering through the D14 adapter. No duplicate account or silent partial access.
+- [ ] Show global-user memberships as a summary with Open namespace links; later membership changes use local Members, not a second global editor.
+- [ ] Reuse C7's Create namespace form from the sidebar, and refresh namespace/role/member projections after relevant changes. Distinguish inherited Global Admin from explicit local Administrator membership.
+- [ ] Verify one account with different roles in at least two namespaces; local role choices cannot grant platform authority.
+
+## Local implementation checklist
 
 - [ ] Define member/lookup/local-role DTOs and lifecycle adapter operations under the active namespace.
 - [ ] Add a dedicated Members module/page gated by membership-management authority; ordinary content/shared-user read does not automatically expose admin controls.
@@ -23,7 +36,7 @@ Members/assignment page structure can start with agreed fixtures. Live assignmen
 - [ ] Add assign/change/unassign operations; handle existing member, inactive user, validation/concurrency and removed-access errors.
 - [ ] After lifecycle operations, refresh member list/counts and current-user access if affected. Unassign removes no global profile/account/other role; it cannot revoke inherited Global Admin authority.
 - [ ] Implement backend's self-unassignment/last-local-admin policy. If denied, preserve membership; if permitted and access is lost, leave protected content and offer authorized alternatives.
-- [ ] Keep main Users directory/profile/create/delete/invite screens unavailable in child context, including direct routes, keyboard and batch actions. Do not reuse global `useItem('directus_users')` writes for memberships.
+- [ ] Keep global account/profile/create/delete/invite actions unavailable to local-admin Members views, including direct routes/keyboard/batch actions. A Global Admin may separately open global Administration while content stays in a child; that platform view is not a local-admin privilege. Do not reuse global `useItem('directus_users')` writes for memberships.
 - [ ] Adapt local role editor/counts and replace child role invitation with assigning an existing user; no `/users/invite` call from a child.
 - [ ] Revise namespace-safe new-role defaults in `appRecommendedPermissions`: no automatic full-directory/profile/file rights beyond agreed policies.
 - [ ] Capability-filter local Settings links AND direct route guards before side effects. Local admins can manage local schema/flows/roles, never shared user schema/project settings or platform grants.
@@ -44,6 +57,8 @@ Recommended new module: `app/src/modules/members/`. Existing main-user screens: 
 
 ## Completion criteria
 
+- [ ] Global Users filters by namespace/local role with distinct counts and preserves content context. Create User/Invite User supports multiple valid initial namespace-role pairs with coherent failure/retry behaviour.
+
 - [ ] Child member list contains local members only; picker selects existing users without exposing unrestricted directory/profile data.
 - [ ] Assign/change/unassign affect only the active namespace; global account/profile and other memberships remain intact.
 - [ ] Local admin can create/edit local roles, schema and flows; direct user-create/profile/shared-settings/foreign-role/platform attempts are denied by UI and server.
@@ -56,4 +71,4 @@ Implementation commit/PR: —
 
 Member/local-admin and negative API checks: —
 
-Open dependencies or limitations: D05/D09/D11, relevant D08/D10 and core C2–C4 integration.
+Open dependencies or limitations: D05/D09/D11/D14, relevant D08/D10 and core C2–C4 integration.
