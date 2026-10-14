@@ -1,23 +1,23 @@
 import type { Request, RequestHandler } from 'express';
 import getDatabase from '../database/index.js';
-import { ForbiddenException } from '../exceptions/index.js';
+import { ForbiddenException, InvalidPayloadException } from '../exceptions/index.js';
 import asyncHandler from '../utils/async-handler.js';
 import { getDefaultNamespace, isNamespaceHeaderEnabled, NAMESPACE_HEADER } from './config.js';
 import { runWithNamespace } from './context.js';
 import { resolveNamespaceMembership } from './membership.js';
 import { isControlPlanePath } from './paths.js';
+import { getNamespace } from './registry.js';
 import { pickNamespace } from './resolve.js';
 
 /**
- * Namespace requested by the request itself: token claim, then the
- * development-only header, then the configured default.
+ * The namespace the request asks for, keeping the claim and the header separate
+ * because a contradiction between them is an error rather than a preference.
  */
-function readRequestedNamespace(req: Request): string | undefined {
-	return pickNamespace({
+function readRequestedNamespace(req: Request): { claimed?: string | undefined; header?: string | undefined } {
+	return {
 		claimed: req.virtualNamespace,
 		header: isNamespaceHeaderEnabled() ? req.header(NAMESPACE_HEADER) : undefined,
-		fallback: getDefaultNamespace(),
-	});
+	};
 }
 
 /**
@@ -26,6 +26,10 @@ function readRequestedNamespace(req: Request): string | undefined {
  * Only authenticated requests get a namespace, and never a control-plane path:
  * an anonymous caller must not be able to select where it reads from, and the
  * endpoints needed to recover from a bad namespace must stay reachable.
+ *
+ * The requested value is a namespace *id*, resolved through the registry. Both
+ * an unknown id and a namespace that is not ready fail closed: silently falling
+ * back to the default would serve the wrong data under a correct-looking label.
  *
  * For an authenticated non-admin the role is resolved from the membership table
  * together with its access flags, and replaces `accountability.role`. Without a
@@ -41,17 +45,30 @@ export function virtualNamespace(): RequestHandler {
 			return;
 		}
 
-		const namespace = readRequestedNamespace(req);
+		const { claimed, header } = readRequestedNamespace(req);
 
-		if (!namespace) {
+		if (claimed && header && claimed !== header) {
+			throw new InvalidPayloadException(`"${NAMESPACE_HEADER}" conflicts with the namespace of the supplied token`);
+		}
+
+		const requested = pickNamespace({ claimed, header, fallback: getDefaultNamespace() });
+
+		if (!requested) {
 			next();
 			return;
 		}
 
+		// Resolved against the shared schema: this runs before the namespace
+		// context is entered, so `getDatabase()` is still the default.
+		const database = getDatabase();
+		const namespace = await getNamespace(database, requested);
+
+		if (!namespace || namespace.readiness !== 'ready') {
+			throw new ForbiddenException();
+		}
+
 		if (accountability.admin !== true) {
-			// Resolved against the shared schema: this runs before the namespace
-			// context is entered, so `getDatabase()` is still the default.
-			const membership = await resolveNamespaceMembership(getDatabase(), accountability.user, namespace);
+			const membership = await resolveNamespaceMembership(database, accountability.user, namespace.id);
 
 			if (!membership) {
 				throw new ForbiddenException();
@@ -62,6 +79,8 @@ export function virtualNamespace(): RequestHandler {
 			accountability.app = membership.app_access;
 		}
 
-		runWithNamespace(namespace, next);
+		// The context carries the physical schema: `search_path` and the caches
+		// work in terms of the schema, while the id stays the external identifier.
+		runWithNamespace(namespace.schema_name, next);
 	});
 }

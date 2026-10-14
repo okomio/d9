@@ -21,13 +21,15 @@ export type NamespaceMembership = {
  * role row, so a namespace role that is an admin stays a non-admin unless the
  * middleware applies them here.
  *
+ * `namespaceId` is the registry id, not the physical schema.
+ *
  * Reads from the shared control plane, so it must be called *before* entering
  * the namespace context (i.e. while `getDatabase()` still returns the default).
  */
 export async function resolveNamespaceMembership(
 	database: Knex,
 	userId: string,
-	namespace: string
+	namespaceId: string
 ): Promise<NamespaceMembership | undefined> {
 	const membership = await database
 		.select({
@@ -38,7 +40,7 @@ export async function resolveNamespaceMembership(
 		.from(`${MEMBERSHIP_TABLE} as m`)
 		.leftJoin(`${ROLES_TABLE} as r`, 'm.role_id', 'r.id')
 		.where('m.user_id', userId)
-		.andWhere('m.namespace', namespace)
+		.andWhere('m.namespace_id', namespaceId)
 		.first();
 
 	if (!membership?.role) return undefined;
