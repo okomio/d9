@@ -9,11 +9,18 @@ import { DEFAULT_AUTH_PROVIDER } from '../constants.js';
 import getDatabase from '../database/index.js';
 import emitter from '../emitter.js';
 import env from '../env.js';
-import { InvalidCredentialsException, InvalidOTPException, UserSuspendedException } from '../exceptions/index.js';
+import {
+	ForbiddenException,
+	InvalidCredentialsException,
+	InvalidOTPException,
+	InvalidPayloadException,
+	UserSuspendedException,
+} from '../exceptions/index.js';
 import { createRateLimiter } from '../rate-limiter.js';
 import type { AbstractServiceOptions, DirectusTokenPayload, LoginResult, Session, User } from '../types/index.js';
 import { getMilliseconds } from '../utils/get-milliseconds.js';
 import { stall } from '../utils/stall.js';
+import { canEnterNamespace } from '../virtual-namespace/access.js';
 import { readNamespaceClaim } from '../virtual-namespace/claims.js';
 import { ActivityService } from './activity.js';
 import { SettingsService } from './settings.js';
@@ -252,7 +259,16 @@ export class AuthenticationService {
 		};
 	}
 
-	async refresh(refreshToken: string): Promise<Record<string, any>> {
+	/**
+	 * Rotates the refresh token and mints an access token.
+	 *
+	 * `namespace` is a per-request hint, not session state: one session row
+	 * serves every tab of a device, so each tab asks for its own namespace.
+	 * A requested namespace must be enterable and is then carried into the new
+	 * access token. Without one the token carries no claim and resolves to the
+	 * default namespace, which keeps legacy clients working.
+	 */
+	async refresh(refreshToken: string, namespace?: string): Promise<Record<string, any>> {
 		const { nanoid } = await import('nanoid');
 		const STALL_TIME = env['LOGIN_STALL_TIME'];
 		const timeStart = performance.now();
@@ -305,6 +321,20 @@ export class AuthenticationService {
 
 		if (!record || (!record.share_id && !record.user_id)) {
 			throw new InvalidCredentialsException();
+		}
+
+		// A share refresh carries its own scope and stays namespace-agnostic for
+		// now; only a personal session can request a namespace.
+		const requestedNamespace = record.share_id ? undefined : namespace?.trim() || undefined;
+
+		if (requestedNamespace && record.user_id) {
+			const allowed = await canEnterNamespace(this.knex, record.user_id, requestedNamespace, {
+				isGlobalAdmin: record.role_admin_access === true || record.role_admin_access == 1,
+			});
+
+			if (!allowed) {
+				throw new ForbiddenException();
+			}
 		}
 
 		if (record.user_id && record.user_status !== 'active') {
@@ -414,6 +444,10 @@ export class AuthenticationService {
 			delete tokenPayload.id;
 		}
 
+		if (requestedNamespace) {
+			tokenPayload.namespace = requestedNamespace;
+		}
+
 		const customClaims = await emitter.emitFilter(
 			'auth.jwt',
 			tokenPayload,
@@ -444,6 +478,76 @@ export class AuthenticationService {
 			refreshToken: newRefreshToken,
 			expires: getMilliseconds(env['ACCESS_TOKEN_TTL']),
 			id: record.user_id,
+		};
+	}
+
+	/**
+	 * Mints an access token scoped to another namespace, for the caller's own
+	 * session.
+	 *
+	 * Deliberately stateless: no session is created, rotated or invalidated, so
+	 * the caller's current token stays valid until the client commits to the
+	 * switch. That is what lets a switch denial leave the source usable.
+	 *
+	 * The role and access flags stay those of the *shared* role. Those flags
+	 * mean "global admin" / "app access" and nothing else here: re-scoping them
+	 * to the namespace role would let a local admin mint a token that bypasses
+	 * every membership check in every namespace. The namespace role is resolved
+	 * per request from the membership instead.
+	 */
+	async mintNamespaceToken(namespace: string): Promise<Record<string, any>> {
+		const accountability = this.accountability;
+
+		if (!accountability?.user || !accountability.session_id) {
+			throw new InvalidCredentialsException();
+		}
+
+		const requestedNamespace = namespace.trim();
+
+		if (!requestedNamespace) {
+			throw new InvalidPayloadException(`"namespace" is required`);
+		}
+
+		const allowed = await canEnterNamespace(this.knex, accountability.user, requestedNamespace, {
+			isGlobalAdmin: accountability.admin === true,
+		});
+
+		if (!allowed) {
+			throw new ForbiddenException();
+		}
+
+		const tokenPayload: DirectusTokenPayload = {
+			id: accountability.user,
+			role: accountability.role ?? null,
+			app_access: accountability.app === true,
+			admin_access: accountability.admin === true,
+			session_id: accountability.session_id,
+			namespace: requestedNamespace,
+		};
+
+		const customClaims = await emitter.emitFilter(
+			'auth.jwt',
+			tokenPayload,
+			{
+				status: 'pending',
+				user: accountability.user,
+				type: 'namespace-switch',
+			},
+			{
+				database: this.knex,
+				schema: this.schema,
+				accountability: this.accountability,
+			}
+		);
+
+		const accessToken = jwt.sign(customClaims, env['SECRET'] as string, {
+			expiresIn: env['ACCESS_TOKEN_TTL'],
+			issuer: 'directus',
+		});
+
+		return {
+			accessToken,
+			expires: getMilliseconds(env['ACCESS_TOKEN_TTL']),
 		};
 	}
 

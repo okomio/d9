@@ -96,7 +96,15 @@ router.post(
 
 		const mode: 'json' | 'cookie' = req.body.mode || (req.body.refresh_token ? 'json' : 'cookie');
 
-		const { accessToken, refreshToken, expires } = await authenticationService.refresh(currentRefreshToken);
+		// Optional per-tab namespace: one session serves every tab of a device,
+		// so the tab states which namespace it wants rather than the session
+		// holding one shared answer.
+		const namespace = typeof req.body.namespace === 'string' ? req.body.namespace : undefined;
+
+		const { accessToken, refreshToken, expires } = await authenticationService.refresh(
+			currentRefreshToken,
+			namespace
+		);
 
 		const payload = {
 			data: { access_token: accessToken, expires },

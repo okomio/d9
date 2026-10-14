@@ -20,6 +20,7 @@ import flowsRouter from './controllers/flows.js';
 import foldersRouter from './controllers/folders.js';
 import graphqlRouter from './controllers/graphql.js';
 import itemsRouter from './controllers/items.js';
+import namespacesRouter from './controllers/namespaces.js';
 import notFoundHandler from './controllers/not-found.js';
 import notificationsRouter from './controllers/notifications.js';
 import operationsRouter from './controllers/operations.js';
@@ -270,6 +271,7 @@ export default async function createApp(): Promise<express.Application> {
 	app.use('/flows', flowsRouter);
 	app.use('/folders', foldersRouter);
 	app.use('/items', itemsRouter);
+	app.use('/namespaces', namespacesRouter);
 	app.use('/notifications', notificationsRouter);
 	app.use('/operations', operationsRouter);
 	app.use('/panels', panelsRouter);
