@@ -78,10 +78,10 @@ function focusInput() {
 		border-color: var(--border-normal-alt);
 	}
 	.search-icon {
-		margin: 0 8px 0 8px;
+		margin: 0 4px 0 8px;
 	}
 	.filter-icon {
-		margin: 0 8px 0 4px;
+		margin: 0 8px 0 0;
 	}
 	.clear-icon {
 		margin: 0 4px;
