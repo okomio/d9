@@ -349,6 +349,7 @@ export const onBeforeEach: NavigationGuard = async (to) => {
 		if (requested && requested !== runtime.state.active.namespaceId) {
 			if (!allowedDestination(runtime.state.choices, requested, runtime.state.active.platform.isGlobalAdmin))
 				return '/namespace/choose';
+
 			const result = await runtime.coordinator.requestSwitch({
 				namespaceId: requested,
 				source: 'history',

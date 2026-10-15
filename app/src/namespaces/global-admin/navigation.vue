@@ -36,7 +36,7 @@
 					<v-list-item-content>{{ roleError }}</v-list-item-content>
 				</v-list-item>
 				<v-list-item v-else-if="roles.length === 0">
-					<v-list-item-content>No roles found</v-list-item-content>
+					<v-list-item-content>No roles returned by this context</v-list-item-content>
 				</v-list-item>
 				<v-list-item
 					v-for="role in roles"

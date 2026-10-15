@@ -19,7 +19,7 @@
 				@click="toggleSize"
 			/>
 
-			<v-menu show-arrow placement="bottom">
+			<v-menu v-if="!sortDisabled" show-arrow placement="bottom">
 				<template #activator="{ toggle }">
 					<div v-tooltip.top="t('sort_field')" class="sort-selector" @click="toggle">
 						{{ sortField && sortField.name }}
@@ -39,7 +39,11 @@
 					</v-list-item>
 				</v-list>
 			</v-menu>
+			<div v-else v-tooltip.top="sortDisabledTooltip" class="sort-selector disabled">
+				{{ sortField && sortField.name }}
+			</div>
 			<v-icon
+				v-if="!sortDisabled"
 				v-tooltip.top="t('sort_direction')"
 				class="sort-direction"
 				:class="{ descending }"
@@ -47,6 +51,7 @@
 				clickable
 				@click="toggleDescending"
 			/>
+			<v-icon v-else v-tooltip.top="sortDisabledTooltip" class="sort-direction disabled" name="sort" />
 		</div>
 	</div>
 </template>
@@ -70,6 +75,14 @@ export default defineComponent({
 		sort: {
 			type: Array as PropType<string[]>,
 			required: true,
+		},
+		sortDisabled: {
+			type: Boolean,
+			default: false,
+		},
+		sortDisabledTooltip: {
+			type: String,
+			default: null,
 		},
 		showSelect: {
 			type: String as PropType<ShowSelect>,
@@ -195,7 +208,7 @@ export default defineComponent({
 		margin-right: 8px;
 		transition: color var(--fast) var(--transition);
 
-		&:hover {
+		&:not(.disabled):hover {
 			color: var(--foreground-normal);
 			cursor: pointer;
 		}
@@ -208,7 +221,7 @@ export default defineComponent({
 			transform: scaleY(-1);
 		}
 
-		&:hover {
+		&:not(.disabled):hover {
 			color: var(--foreground-normal);
 			cursor: pointer;
 		}
