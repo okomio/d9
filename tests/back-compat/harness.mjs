@@ -102,7 +102,7 @@ export class Fixture {
 			AUTH_COMPAT_PROFILE_URL: 'https://identity.compat.invalid/profile',
 		};
 
-		await this.runCli(['bootstrap'], { PUBLIC_URL: 'http://127.0.0.1:1' });
+		await this.runCli(['bootstrap'], { PUBLIC_URL: 'http://127.0.0.1:1', VIRTUAL_NAMESPACES_ENABLED: 'true' });
 		this.data = await seed(this.database, storage);
 
 		for (const [mode, overrides] of Object.entries({

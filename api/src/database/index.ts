@@ -18,7 +18,7 @@ import { getActiveNamespace } from '../virtual-namespace/context.js';
 import { getHelpers } from './helpers/index.js';
 
 let database: Knex | null = null;
-let inspector: SchemaInspector | null = null;
+const inspectors = new WeakMap<Knex, SchemaInspector>();
 let databaseVersion: string | null = null;
 
 /** Virtual-namespace databases, keyed by namespace. */
@@ -197,13 +197,13 @@ function buildDatabase(searchPathOverride?: string | string[]): Knex {
 }
 
 export function getSchemaInspector(): SchemaInspector {
-	if (inspector) {
-		return inspector;
-	}
-
 	const database = getDatabase();
+	const existing = inspectors.get(database);
 
-	inspector = createInspector(database);
+	if (existing) return existing;
+
+	const inspector = createInspector(database);
+	inspectors.set(database, inspector);
 
 	return inspector;
 }

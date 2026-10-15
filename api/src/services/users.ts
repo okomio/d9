@@ -16,6 +16,8 @@ import { Url } from '../utils/url.js';
 import { ItemsService } from './items.js';
 import { MailService } from './mail/index.js';
 import { SettingsService } from './settings.js';
+import { assertSharedWrite } from '../virtual-namespace/authority.js';
+import { runWithoutNamespace } from '../virtual-namespace/context.js';
 
 export class UsersService extends ItemsService {
 	constructor(options: AbstractServiceOptions) {
@@ -173,6 +175,7 @@ export class UsersService extends ItemsService {
 	 * Create multiple new users
 	 */
 	override async createMany(data: Partial<Item>[], opts?: MutationOptions): Promise<PrimaryKey[]> {
+		assertSharedWrite(this.collection, this.accountability);
 		const emails = data['map']((payload) => payload['email']).filter((email) => email);
 		const passwords = data['map']((payload) => payload['password']).filter((password) => password);
 
@@ -234,6 +237,8 @@ export class UsersService extends ItemsService {
 	 * Update many users by primary key
 	 */
 	override async updateMany(keys: PrimaryKey[], data: Partial<Item>, opts?: MutationOptions): Promise<PrimaryKey[]> {
+		assertSharedWrite(this.collection, this.accountability);
+
 		try {
 			if (data['role']) {
 				// data['role'] will be an object with id with GraphQL mutations
@@ -304,6 +309,8 @@ export class UsersService extends ItemsService {
 	 * Delete multiple users by primary key
 	 */
 	override async deleteMany(keys: PrimaryKey[], opts?: MutationOptions): Promise<PrimaryKey[]> {
+		assertSharedWrite(this.collection, this.accountability);
+
 		try {
 			await this.checkRemainingAdminExistence(keys);
 		} catch (err: any) {
@@ -336,6 +343,7 @@ export class UsersService extends ItemsService {
 	}
 
 	async inviteUser(email: string | string[], role: string, url: string | null, subject?: string | null): Promise<void> {
+		assertSharedWrite(this.collection, this.accountability);
 		const opts: MutationOptions = {};
 
 		try {
@@ -476,16 +484,16 @@ export class UsersService extends ItemsService {
 			throw new ForbiddenException();
 		}
 
-		// Allow unauthenticated update
+		// The verified recovery token authorizes this fixed password/status update.
 		const service = new UsersService({
 			knex: this.knex,
 			schema: this.schema,
 			accountability: {
 				...(this.accountability ?? { role: null }),
-				admin: true, // We need to skip permissions checks for the update call below
+				admin: true,
 			},
 		});
 
-		await service.updateOne(user.id, { password, status: 'active' }, opts);
+		await runWithoutNamespace(() => service.updateOne(user.id, { password, status: 'active' }, opts));
 	}
 }

@@ -10,7 +10,7 @@ describe('isAlwaysBlockedWrite', () => {
 		expect(isAlwaysBlockedWrite('DELETE', '/files/abc')).toBe(true);
 	});
 
-	test('leaves reads open — a namespace admin must see all users', () => {
+	test('leaves reads to service-level membership and permission checks', () => {
 		expect(isAlwaysBlockedWrite('GET', '/users')).toBe(false);
 		expect(isAlwaysBlockedWrite('GET', '/users/abc')).toBe(false);
 		expect(isAlwaysBlockedWrite('HEAD', '/files/abc')).toBe(false);

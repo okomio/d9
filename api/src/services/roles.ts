@@ -5,6 +5,7 @@ import { ItemsService } from './items.js';
 import { PermissionsService } from './permissions.js';
 import { PresetsService } from './presets.js';
 import { UsersService } from './users.js';
+import { assertNamespaceOwnedWrite } from '../virtual-namespace/authority.js';
 
 export class RolesService extends ItemsService {
 	constructor(options: AbstractServiceOptions) {
@@ -121,6 +122,7 @@ export class RolesService extends ItemsService {
 	}
 
 	override async deleteMany(keys: PrimaryKey[]): Promise<PrimaryKey[]> {
+		await assertNamespaceOwnedWrite(this.knex, this.collection, this.accountability, undefined, keys);
 		const opts: MutationOptions = {};
 
 		try {

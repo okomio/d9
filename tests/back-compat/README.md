@@ -13,8 +13,9 @@ nvm use
 npm run test:back-compat
 ```
 
-The command builds the API, including YAML/Liquid assets, and uses Node's test runner. Use the Node version that matches
-the installed native dependencies (`isolated-vm`, in particular). The local validation environment uses Node 22.20.0.
+The command builds the shared types, schema inspector and API, including YAML/Liquid assets, and uses Node's test
+runner. Use the Node version that matches the installed native dependencies (`isolated-vm`, in particular). The local
+validation environment uses Node 22.20.0.
 
 A reachable PostgreSQL 13+ server and a user with `CREATEDB` privileges are required. Defaults match the local
 development PostgreSQL server. Override only the connection using:
@@ -68,27 +69,50 @@ Active acceptance assertions cover:
 - Global Admin inheritance with no child membership or a lower child role, and denied local-admin escalation.
 - Local-member visibility, membership revocation without shared-session loss, per-tab refresh and originating-namespace
   writes/audit records.
+- Defaultless GraphQL identity operations, named operations/fragments, and mixed-operation rejection before side
+  effects.
+- Table-level metadata precedence, namespace-correct foreign keys, batch/nested shared-write denial, user aggregates and
+  relational visibility, and fresh cached results after membership removal or global-admin demotion.
+- Readable partitioned parent tables, inverse user relations/counts, route-casing cache checks, and local permission
+  rows that must not target main-owned roles. Fresh enabled bootstrap must assign the first admin role to main without a
+  fixture repair.
 
 Agreed policy assertions are acceptance gates: failures identify unfinished behavior in Foundation/API work. They remain
-ordinary failing tests rather than skipped cases or assertions widened to match an implementation defect. This suite
-does not change API implementation to make those gates pass.
+ordinary regression tests rather than skipped cases or assertions widened to match an implementation defect.
 
 ## Recorded local result
 
-Validated on 15 October 2026 with Node 22.20.0 and PostgreSQL 16: **125 tests, 120 passed, 5 failed, no skips or
-TODOs**. Both complete legacy contract suites pass. The strict namespace acceptance suite reproduces these open issues:
+Validated on 15 October 2026 with Node 22.20.0 and PostgreSQL 16: **143 tests, 143 passed, no failures, skips or
+TODOs**. Both complete legacy contract suites and namespace acceptance pass. The original 125 assertions remain in
+place; 18 additional regression cases cover alternate transports, nested queries, bootstrap and cache freshness.
 
-| Failing gate                      | Observed behavior                                                                                                                | Source entry point                                                                                             |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Missing default                   | Authenticated content returns legacy data with HTTP 200 instead of failing closed; shared identity remains reachable             | [Namespace middleware](../../api/src/virtual-namespace/middleware.ts)                                          |
-| Scoped REST field metadata        | `/fields/tracking_events` omits the field present only in the peer schema; generated GraphQL schemas do distinguish the fixtures | [Cached schema inspector](../../api/src/database/index.ts), [fields service](../../api/src/services/fields.ts) |
-| GraphQL shared-account escalation | A child admin changes a shared user's `first_name` through `/graphql/system`; the equivalent REST write is denied                | [GraphQL system mutations](../../api/src/services/graphql/index.ts)                                            |
-| Instance cache administration     | A child admin receives HTTP 200 from `/utils/cache/clear`                                                                        | [Utility controller](../../api/src/controllers/utils.ts)                                                       |
-| Namespace-admin user visibility   | `/users` includes the global admin, outsider and write-only user in addition to the two local members                            | [Users controller](../../api/src/controllers/users.ts)                                                         |
+The full API unit suite also passes: **744 passed, 2 expected failures and 1 skipped**, across 88 passing files and one
+skipped file. Its app tests require the compiled admin bundle (`npm --prefix app run build`) and local socket access.
+The API, schema inspector, shared types and admin app builds pass, as do ESLint, Prettier and whitespace checks on the
+changed files. API unit output is recorded in `/tmp/d9-api-fixes-unit.log`.
 
-The GraphQL mutation uses a synthetic user and restores the original value in `finally`; the entire test database is
-then dropped. These failures are not claims about the running production deployment. Full output from the recorded run
-was written to `/tmp/d9-back-compat.log`; subsequent runs print their own Node test report.
+The five previously failing gates are fixed:
+
+| Gate                              | Verified behavior                                                                                                    |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Missing default                   | Authenticated content fails closed; shared REST and GraphQL identity operations remain reachable                     |
+| Scoped REST field metadata        | Metadata describes the owning table, with unique fields and namespace-correct foreign keys                           |
+| GraphQL shared-account escalation | Local admin authority cannot authorize shared account writes, including batch and nested mutations                   |
+| Instance cache administration     | REST and GraphQL cache clearing require global authority                                                             |
+| Namespace-admin user visibility   | Lists, details, SEARCH, aggregates, nested relations and counts respect membership; warmed caches reflect revocation |
+
+Generic GraphQL mutations retain their existing error-wrapper behavior, including `INTERNAL_SERVER_ERROR` for wrapped
+service denials; direct utility resolvers expose `FORBIDDEN`. The denial tests also verify unchanged database rows and
+the absence of successful mutation results. Hidden GraphQL user details return `null`; REST details return `403`.
+
+Mutating regressions use synthetic accounts and restore rows in `finally`; the entire test database is then dropped.
+Full output from the recorded run was written to `/tmp/d9-back-compat-fixes.log`. These results establish local source
+behavior, not deployed production compatibility.
+
+Enabled scoped response caching computes one fresh membership aggregate per cache-eligible request. The fingerprint is
+not memoized: membership changes select a new cache key, while unchanged membership retains cache hits. Requests
+admitted before a membership change may finish under their original authorization context. No schema migration is
+needed.
 
 ## Deployment validation still required
 

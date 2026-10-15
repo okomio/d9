@@ -22,6 +22,8 @@ import { getMilliseconds } from '../utils/get-milliseconds.js';
 import { stall } from '../utils/stall.js';
 import { canEnterNamespace, describeNamespaceContext } from '../virtual-namespace/access.js';
 import { readNamespaceClaim } from '../virtual-namespace/claims.js';
+import { resolveSharedAccountability } from '../virtual-namespace/authority.js';
+import { isVirtualNamespaceEnabled } from '../virtual-namespace/config.js';
 import { ActivityService } from './activity.js';
 import { SettingsService } from './settings.js';
 import { TFAService } from './tfa.js';
@@ -126,6 +128,19 @@ export class AuthenticationService {
 
 			await stall(STALL_TIME, timeStart);
 			throw new InvalidCredentialsException();
+		}
+
+		if (isVirtualNamespaceEnabled()) {
+			const sharedAccountability = await resolveSharedAccountability(this.knex, {
+				user: user.id,
+				role: user.role,
+				admin: user.admin_access === true,
+				app: user.app_access === true,
+			});
+
+			user.role = sharedAccountability.role;
+			user.admin_access = sharedAccountability.admin === true;
+			user.app_access = sharedAccountability.app === true;
 		}
 
 		const settingsService = new SettingsService({
@@ -335,6 +350,19 @@ export class AuthenticationService {
 			throw new InvalidCredentialsException();
 		}
 
+		if (isVirtualNamespaceEnabled() && record.user_id && !record.share_id) {
+			const sharedAccountability = await resolveSharedAccountability(this.knex, {
+				user: record.user_id,
+				role: record.role_id ?? null,
+				admin: record.role_admin_access === true || record.role_admin_access === 1,
+				app: record.role_app_access === true || record.role_app_access === 1,
+			});
+
+			record.role_id = sharedAccountability.role;
+			record.role_admin_access = sharedAccountability.admin === true;
+			record.role_app_access = sharedAccountability.app === true;
+		}
+
 		// A share refresh carries its own scope and stays namespace-agnostic for
 		// now; only a personal session can request a namespace.
 		const requestedNamespace = record.share_id ? undefined : namespace?.trim() || undefined;
@@ -496,7 +524,7 @@ export class AuthenticationService {
 						app: record.role_app_access === true || record.role_app_access == 1,
 					},
 					requestedNamespace
-				);
+			  );
 
 		return {
 			accessToken,
@@ -522,7 +550,9 @@ export class AuthenticationService {
 	 * per request from the membership instead.
 	 */
 	async mintNamespaceToken(namespace: string): Promise<Record<string, any>> {
-		const accountability = this.accountability;
+		const accountability = this.accountability
+			? await resolveSharedAccountability(this.knex, this.accountability)
+			: null;
 
 		if (!accountability?.user || !accountability.session_id) {
 			throw new InvalidCredentialsException();

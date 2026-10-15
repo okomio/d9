@@ -54,7 +54,8 @@ export async function seed(database, storageRoot) {
 	const admin = await database('directus_users').where({ email: credentials.email }).first();
 	if (!admin) throw new Error('Bootstrap did not create the synthetic admin');
 	await database('directus_users').where({ id: admin.id }).update({ token: tokens.admin });
-	await database('directus_roles').where({ id: admin.role }).update({ namespace: 'main' });
+	const adminRole = await database('directus_roles').where({ id: admin.role }).first();
+	if (adminRole?.namespace !== 'main') throw new Error('Enabled bootstrap must create the admin role in main');
 
 	await database('directus_collections').insert({ collection: 'compat_fixture', accountability: 'all' });
 
@@ -66,6 +67,7 @@ export async function seed(database, storageRoot) {
 			table.integer('rank');
 			table.string('secret');
 			table.json('configuration');
+			if (collection === 'tracking_events') table.uuid('compat_owner');
 			if (relationTargets[collection]) table.string(relationTargets[collection][0], 64);
 		});
 
@@ -94,6 +96,23 @@ export async function seed(database, storageRoot) {
 		});
 	}
 
+	await database.schema.alterTable('tracking_events', (table) => {
+		table.foreign('compat_owner').references('id').inTable('directus_users');
+	});
+
+	await database('directus_fields').insert({
+		collection: 'tracking_events',
+		field: 'compat_owner',
+		special: 'm2o',
+		interface: 'select-dropdown-m2o',
+	});
+
+	await database('directus_relations').insert({
+		many_collection: 'tracking_events',
+		many_field: 'compat_owner',
+		one_collection: 'directus_users',
+	});
+
 	await database('directus_namespaces').insert([
 		{ id: peer.id, name: 'Synthetic peer', schema_name: peer.schema, kind: 'virtual', readiness: 'provisioning' },
 		{
@@ -110,6 +129,25 @@ export async function seed(database, storageRoot) {
 
 	// A deliberately different peer schema catches schema/GraphQL cache leakage.
 	await database.schema.withSchema(peer.schema).alterTable('tracking_events', (table) => table.string('peer_marker'));
+	await database.schema.alterTable('tracking_events', (table) => table.string('main_marker'));
+
+	await database.raw('alter table ??.?? add foreign key (??) references ??.?? (??)', [
+		peer.schema,
+		'tracking_events',
+		'context',
+		peer.schema,
+		'tracking_contexts',
+		'id',
+	]);
+
+	await database.raw('alter table ??.?? add foreign key (??) references ??.?? (??)', [
+		peer.schema,
+		'tracking_events',
+		'compat_owner',
+		'public',
+		'directus_users',
+		'id',
+	]);
 
 	for (const [schema, namespace] of [
 		['public', 'main'],
@@ -151,6 +189,23 @@ export async function seed(database, storageRoot) {
 
 	await database('compat_legacy_only').insert({ id: 'first', name: 'legacy-only-secret' });
 	await database('directus_collections').insert({ collection: 'compat_legacy_only', accountability: 'all' });
+
+	await database.raw('create table ?? (id integer primary key, name text) partition by range (id)', [
+		'compat_partitioned',
+	]);
+
+	await database.raw('create table ?? partition of ?? for values from (0) to (100)', [
+		'compat_partitioned_p0',
+		'compat_partitioned',
+	]);
+
+	await database('compat_partitioned').insert({ id: 1, name: 'partitioned-parent' });
+
+	await database('directus_collections').insert({
+		collection: 'compat_partitioned',
+		accountability: 'all',
+		group: 'compat_fixture',
+	});
 
 	const roles = {};
 
@@ -204,6 +259,15 @@ export async function seed(database, storageRoot) {
 		});
 	}
 
+	for (const schema of ['public', peer.schema]) {
+		for (const [id, user] of [
+			['first', 'member'],
+			['second', 'outsider'],
+		]) {
+			await database.withSchema(schema).table('tracking_events').where({ id }).update({ compat_owner: users[user] });
+		}
+	}
+
 	const permissions = [];
 
 	for (const [key, namespace] of [
@@ -248,6 +312,18 @@ export async function seed(database, storageRoot) {
 			action,
 			fields: '*',
 			permissions: '{}',
+		});
+	}
+
+	// A narrow shared self-service grant must survive entry into a child admin context.
+	for (const action of ['read', 'update']) {
+		permissions.push({
+			role: roles.outsider,
+			namespace: 'main',
+			collection: 'directus_users',
+			action,
+			fields: 'id,first_name',
+			permissions: JSON.stringify({ id: { _eq: '$CURRENT_USER' } }),
 		});
 	}
 

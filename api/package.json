@@ -68,7 +68,7 @@
 		"migrate:infrastructure": "node scripts/migrate-infrastructure.mjs",
 		"dev": "NODE_ENV=development SERVE_APP=false tsx watch --clear-screen=false src/start.ts",
 		"test": "vitest --watch=false",
-		"test:back-compat": "npm run build && node --test --test-concurrency=1 ../tests/back-compat/critical.test.mjs"
+		"test:back-compat": "npm --prefix ../packages/types run build && npm --prefix ../packages/schema run build && npm run build && node --test --test-concurrency=1 ../tests/back-compat/critical.test.mjs"
 	},
 	"dependencies": {
 		"@wbce-d9/app": "workspace:*",

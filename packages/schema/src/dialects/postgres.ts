@@ -78,6 +78,16 @@ export default class Postgres implements SchemaInspector {
 		return this;
 	}
 
+	/** Resolve table shadowing once at table level, just like PostgreSQL search_path. */
+	private visibleTables() {
+		const schemas = this.explodedSchema.map((schema) => this.knex.raw('?::regnamespace', [schema])).join(', ');
+
+		return `SELECT DISTINCT ON (relname) oid
+			FROM pg_class
+			WHERE relnamespace IN (${schemas}) AND relkind IN ('r', 'p')
+			ORDER BY relname, array_position(ARRAY[${schemas}]::oid[], relnamespace)`;
+	}
+
 	// Overview
 	// ===============================================================================================
 
@@ -118,9 +128,13 @@ export default class Postgres implements SchemaInspector {
           information_schema.columns c
         LEFT JOIN information_schema.tables t
           ON c.table_name = t.table_name
+					AND c.table_schema = t.table_schema
+				JOIN pg_class rel
+					ON rel.relname = c.table_name AND rel.relnamespace = c.table_schema::regnamespace
         WHERE
           t.table_type = 'BASE TABLE'
-          AND c.table_schema IN (${bindings});
+          AND c.table_schema IN (${bindings})
+					AND rel.oid IN (${this.visibleTables()});
       `,
 				this.explodedSchema
 			),
@@ -142,6 +156,7 @@ export default class Postgres implements SchemaInspector {
           AND indisprimary
           AND indnatts = 1
 			 AND relkind != 'S'
+			 AND pg_class.oid IN (${this.visibleTables()})
       `,
 				this.explodedSchema
 			),
@@ -170,8 +185,12 @@ export default class Postgres implements SchemaInspector {
 				FROM geometries g
 				JOIN information_schema.tables t
 					ON g.f_table_name = t.table_name
+					AND g.f_table_schema = t.table_schema
 					AND t.table_type = 'BASE TABLE'
+				JOIN pg_class rel
+					ON rel.relname = g.f_table_name AND rel.relnamespace = g.f_table_schema::regnamespace
 				WHERE f_table_schema in (${bindings})
+					AND rel.oid IN (${this.visibleTables()})
 				`,
 				this.explodedSchema
 			);
@@ -227,6 +246,7 @@ export default class Postgres implements SchemaInspector {
 			pg_class rel
 		 WHERE
 			rel.relnamespace IN (${schemaIn})
+			AND rel.oid IN (${this.visibleTables()})
 			AND rel.relkind = 'r'
 		 ORDER BY rel.relname
 	  `
@@ -258,6 +278,7 @@ export default class Postgres implements SchemaInspector {
 		 LEFT JOIN pg_description des ON rel.oid = des.objoid AND des.objsubid = 0
 		 WHERE
 			rel.relnamespace IN (${schemaIn})
+			AND rel.oid IN (${this.visibleTables()})
 			${table ? 'AND rel.relname = ?' : ''}
 			AND rel.relkind = 'r'
 		 ORDER BY rel.relname
@@ -283,6 +304,7 @@ export default class Postgres implements SchemaInspector {
 			pg_class rel
 		 WHERE
 			rel.relnamespace IN (${schemaIn})
+			AND rel.oid IN (${this.visibleTables()})
 			AND rel.relkind = 'r'
 			AND rel.relname = ?
 		 ORDER BY rel.relname
@@ -315,6 +337,7 @@ export default class Postgres implements SchemaInspector {
 			LEFT JOIN pg_class rel ON att.attrelid = rel.oid
 		 WHERE
 			rel.relnamespace IN (${schemaIn})
+			AND rel.oid IN (${this.visibleTables()})
 			${table ? 'AND rel.relname = ?' : ''}
 			AND rel.relkind = 'r'
 			AND att.attnum > 0
@@ -403,6 +426,7 @@ export default class Postgres implements SchemaInspector {
 			  LEFT JOIN pg_description des ON (att.attrelid, att.attnum) = (des.objoid, des.objsubid)
 			WHERE
 			  rel.relnamespace IN (${schemaIn})
+			AND rel.oid IN (${this.visibleTables()})
 			  ${table ? 'AND rel.relname = ?' : ''}
 			  ${column ? 'AND att.attname = ?' : ''}
 			  AND rel.relkind = 'r'
@@ -432,6 +456,7 @@ export default class Postgres implements SchemaInspector {
 			LEFT JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = con.conkey[1]
 			LEFT JOIN pg_attribute fatt ON fatt.attrelid = con.confrelid AND fatt.attnum = con.confkey[1]
 			WHERE con.connamespace IN (${schemaIn})
+			  AND rel.oid IN (${this.visibleTables()})
 			  AND array_length(con.conkey, 1) <= 1
 			  AND (con.confkey IS NULL OR array_length(con.confkey, 1) = 1)
 			  ${table ? 'AND rel.relname = ?' : ''}
@@ -488,6 +513,7 @@ export default class Postgres implements SchemaInspector {
 				table: 'f_table_name',
 				name: 'f_geometry_column',
 				data_type: 'type',
+				schema: 'f_table_schema',
 			})
 			.from('geometries')
 			.whereIn('f_table_schema', this.explodedSchema);
@@ -509,7 +535,7 @@ export default class Postgres implements SchemaInspector {
 
 		for (const column of parsedColumns) {
 			const geometry = geometries.find((geometry) => {
-				return column.name == geometry.name && column.table == geometry.table;
+				return column.name === geometry.name && column.table === geometry.table && column.schema === geometry.schema;
 			});
 
 			if (geometry) {
@@ -537,6 +563,7 @@ export default class Postgres implements SchemaInspector {
 			LEFT JOIN pg_class rel ON att.attrelid = rel.oid
 		 WHERE
 			rel.relnamespace IN (${schemaIn})
+			AND rel.oid IN (${this.visibleTables()})
 			AND rel.relname = ?
 			AND att.attname = ?
 			AND rel.relkind = 'r'
@@ -564,6 +591,7 @@ export default class Postgres implements SchemaInspector {
 			LEFT JOIN pg_class rel ON con.conrelid = rel.oid
 			LEFT JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = con.conkey[1]
 			WHERE con.connamespace IN (${schemaIn})
+			  AND rel.oid IN (${this.visibleTables()})
 			  AND con.contype = 'p'
 			  AND array_length(con.conkey, 1) <= 1
 			  AND rel.relname = ?
@@ -627,6 +655,7 @@ export default class Postgres implements SchemaInspector {
 			LEFT JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = con.conkey[1]
 			LEFT JOIN pg_attribute fatt ON fatt.attrelid = con.confrelid AND fatt.attnum = con.confkey[1]
 			WHERE con.connamespace IN (${schemaIn})
+			  AND rel.oid IN (${this.visibleTables()})
 			  AND array_length(con.conkey, 1) <= 1
 			  AND (con.confkey IS NULL OR array_length(con.confkey, 1) = 1)
 			  AND con.contype = 'f'

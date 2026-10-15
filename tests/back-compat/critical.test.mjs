@@ -893,6 +893,103 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 		);
 	});
 
+	it('defaultless GraphQL resolves the selected shared operation through aliases and fragments', async () => {
+		const token = (await login('defaultless')).access_token;
+
+		const query = `query Identity { ...IdentityFields } fragment IdentityFields on Query { me: users_me { id } ping: server_ping }
+			query Scoped { users { id } }`;
+
+		const response = ok(
+			await fixture.request('defaultless', '/graphql/system', {
+				token,
+				method: 'POST',
+				body: { query, operationName: 'Identity' },
+			})
+		);
+
+		assert.deepEqual(response, { data: { me: { id: fixture.data.users.admin }, ping: 'pong' } });
+
+		assert.deepEqual(
+			ok(
+				await fixture.request('defaultless', '/GraphQL/System', {
+					token,
+					method: 'POST',
+					body: { query, operationName: 'Identity' },
+				})
+			),
+			response
+		);
+
+		error(
+			await fixture.request('defaultless', '/graphql/system', {
+				token,
+				method: 'POST',
+				body: { query, operationName: 'Scoped' },
+			}),
+			403,
+			'FORBIDDEN'
+		);
+	});
+
+	it('defaultless shared GraphQL mutation works, while a mixed mutation fails before side effects', async () => {
+		const token = (await login('defaultless')).access_token;
+		const id = fixture.data.users.admin;
+		const original = await fixture.database('directus_users').where({ id }).first();
+
+		try {
+			const personal = ok(
+				await fixture.request('defaultless', '/graphql/system', {
+					token,
+					method: 'POST',
+					body: {
+						query: 'mutation { update_users_me(data: { first_name: "personal-defaultless" }) { id first_name } }',
+					},
+				})
+			);
+
+			assert.equal(personal.data.update_users_me.first_name, 'personal-defaultless');
+
+			error(
+				await fixture.request('defaultless', '/graphql/system', {
+					token,
+					method: 'POST',
+					body: {
+						query: `mutation { update_users_me(data: { first_name: "mixed-must-not-run" }) { id } update_users_item(id: "${id}", data: { first_name: "generic-must-not-run" }) { id } }`,
+					},
+				}),
+				403,
+				'FORBIDDEN'
+			);
+
+			assert.equal((await fixture.database('directus_users').where({ id }).first()).first_name, 'personal-defaultless');
+		} finally {
+			await fixture.database('directus_users').where({ id }).update({ first_name: original.first_name });
+		}
+	});
+
+	it('GraphQL response cache distinguishes selected operations in the same document', async () => {
+		const token = await scoped();
+
+		const query =
+			'query First { tracking_events_by_id(id: "first") { id } } query Second { tracking_events_by_id(id: "second") { id } }';
+
+		for (let round = 0; round < 2; round++) {
+			for (const [operationName, id] of [
+				['First', 'first'],
+				['Second', 'second'],
+			]) {
+				const response = await fixture.request('legacy', '/graphql', {
+					token,
+					method: 'POST',
+					body: { query, operationName },
+				});
+
+				assert.deepEqual(ok(response), { data: { tracking_events_by_id: { id } } });
+				if (round > 0) assert.equal(response.headers.get('x-compat-cache'), 'HIT');
+			}
+		}
+	});
+
 	it('warm response/permission caches retain each namespace and local role for the same user', async () => {
 		const main = (await login('legacy', 'member')).access_token;
 		const child = await scoped('member');
@@ -938,6 +1035,14 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 		error(await fixture.request('legacy', '/items/compat_legacy_only/first', { token: child }), 403, 'FORBIDDEN');
 	});
 
+	it('PostgreSQL schema overview preserves readable partitioned parent tables in both legacy modes', async () => {
+		for (const mode of ['disabled', 'legacy']) {
+			assert.deepEqual(ok(await fixture.request(mode, '/items/compat_partitioned', { query: { fields: 'id,name' } })), {
+				data: [{ id: 1, name: 'partitioned-parent' }],
+			});
+		}
+	});
+
 	it('REST field metadata alternates between colliding schemas without losing peer fields', async () => {
 		const main = (await login('legacy')).access_token;
 		const child = await scoped();
@@ -948,6 +1053,12 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 				[child, true],
 			]) {
 				const fields = ok(await fixture.request('legacy', '/fields/tracking_events', { token })).data;
+				assert.equal(new Set(fields.map((field) => field.field)).size, fields.length);
+
+				assert.equal(
+					fields.some((field) => field.field === 'main_marker'),
+					!inPeer
+				);
 
 				assert.equal(
 					fields.some((field) => field.field === 'peer_marker'),
@@ -955,6 +1066,22 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 					`REST metadata must describe ${inPeer ? 'the peer' : 'main'}, including only its own fields`
 				);
 			}
+		}
+	});
+
+	it('REST single-field and relation metadata follow the owning table and foreign key schema', async () => {
+		for (const [token, schema, marker] of [
+			[(await login('legacy')).access_token, 'public', 'main_marker'],
+			[await scoped(), peer.schema, 'peer_marker'],
+		]) {
+			const field = ok(await fixture.request('legacy', `/fields/tracking_events/${marker}`, { token })).data;
+			assert.equal(field.schema.schema, schema);
+			const relations = ok(await fixture.request('legacy', '/relations/tracking_events', { token })).data;
+			const context = relations.find((entry) => entry.field === 'context');
+			assert.equal(context.schema.table, 'tracking_events');
+			assert.equal(context.schema.foreign_key_schema, schema);
+			const owner = relations.find((entry) => entry.field === 'compat_owner');
+			assert.equal(owner.schema.foreign_key_schema, 'public');
 		}
 	});
 
@@ -979,6 +1106,11 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 					response.data.__type.fields.some((field) => field.name === 'peer_marker'),
 					inPeer,
 					`GraphQL must describe ${inPeer ? 'the peer' : 'main'}, including only its own fields`
+				);
+
+				assert.equal(
+					response.data.__type.fields.some((field) => field.name === 'main_marker'),
+					!inPeer
 				);
 			}
 		}
@@ -1061,6 +1193,116 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 		error(await fixture.request('legacy', '/utils/cache/clear', { method: 'POST', token }), 403, 'FORBIDDEN');
 	});
 
+	it('GraphQL cache clearing requires global authority', async () => {
+		const denied = ok(
+			await fixture.request('legacy', '/graphql/system', {
+				token: await scoped('localAdmin'),
+				method: 'POST',
+				body: { query: 'mutation { utils_cache_clear }' },
+			})
+		);
+
+		assert.equal(denied.errors?.[0]?.extensions?.code, 'FORBIDDEN');
+
+		const allowed = ok(
+			await fixture.request('legacy', '/graphql/system', {
+				token: await scoped(),
+				method: 'POST',
+				body: { query: 'mutation { utils_cache_clear }' },
+			})
+		);
+
+		assert.equal(allowed.errors, undefined);
+	});
+
+	it('batch and nested shared-account writes cannot use local admin authority', async () => {
+		const token = await scoped('localAdmin');
+		const id = fixture.data.users.member;
+		const original = await fixture.database('directus_users').where({ id }).first();
+
+		try {
+			error(
+				await fixture.request('legacy', '/users', {
+					token,
+					method: 'PATCH',
+					body: { keys: [id], data: { first_name: 'batch-escalated' } },
+				}),
+				403,
+				'FORBIDDEN'
+			);
+
+			error(
+				await fixture.request('legacy', '/items/tracking_events/first', {
+					token,
+					method: 'PATCH',
+					body: { compat_owner: { id, first_name: 'nested-escalated' } },
+				}),
+				403,
+				'FORBIDDEN'
+			);
+
+			const response = ok(
+				await fixture.request('legacy', '/graphql/system', {
+					token,
+					method: 'POST',
+					body: {
+						query: `mutation { update_users_items(ids: ["${id}"], data: { first_name: "gql-batch-escalated" }) { id } }`,
+					},
+				})
+			);
+
+			assert.ok(response.errors?.length);
+			// Generic mutation resolvers preserve their legacy GraphQL error wrapper.
+			assert.equal(response.errors[0].extensions?.code, 'INTERNAL_SERVER_ERROR');
+			assert.ok(response.data?.update_users_items == null);
+			assert.equal((await fixture.database('directus_users').where({ id }).first()).first_name, original.first_name);
+		} finally {
+			await fixture.database('directus_users').where({ id }).update({ first_name: original.first_name });
+		}
+	});
+
+	it('mixed GraphQL personal mutations retain shared self-service ACL without authorizing generic shared writes', async () => {
+		const token = await scoped('localAdmin');
+		const id = fixture.data.users.localAdmin;
+		const original = await fixture.database('directus_users').where({ id }).first();
+		const admin = await fixture.database('directus_users').where({ id: fixture.data.users.admin }).first();
+
+		try {
+			const response = ok(
+				await fixture.request('legacy', '/graphql/system', {
+					token,
+					method: 'POST',
+					body: {
+						query: `mutation { update_users_me(data: { first_name: "allowed-personal" }) { id first_name } update_users_item(id: "${admin.id}", data: { first_name: "generic-escalated" }) { id } }`,
+					},
+				})
+			);
+
+			assert.deepEqual(response.data.update_users_me, { id, first_name: 'allowed-personal' });
+			assert.equal(response.errors?.[0]?.extensions?.code, 'INTERNAL_SERVER_ERROR');
+			assert.equal(response.data.update_users_item, null);
+
+			assert.equal(
+				(await fixture.database('directus_users').where({ id: admin.id }).first()).first_name,
+				admin.first_name
+			);
+
+			const identity = ok(
+				await fixture.request('legacy', '/graphql/system', {
+					token,
+					method: 'POST',
+					body: { query: '{ users_me { id first_name } users { id } }' },
+				})
+			);
+
+			assert.deepEqual(identity.data.users_me, { id, first_name: 'allowed-personal' });
+			assert.equal(identity.data.users.length, 2);
+		} finally {
+			await fixture.database('directus_users').where({ id }).update({ first_name: original.first_name });
+			await fixture.database('directus_users').where({ id: admin.id }).update({ first_name: admin.first_name });
+		}
+	});
+
 	it('local admin cannot edit a role owned by main', async () => {
 		const token = await scoped('localAdmin');
 		const mainRole = (await fixture.database('directus_users').where({ id: fixture.data.users.admin }).first()).role;
@@ -1074,11 +1316,381 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 		assert.notEqual((await fixture.database('directus_roles').where({ id: mainRole }).first()).name, 'escalated');
 	});
 
+	it('local permission rows cannot grant privileges to a role owned by main', async () => {
+		const token = await scoped('localAdmin');
+		const role = fixture.data.roles.outsider;
+		const collection = 'compat_legacy_only';
+		const original = await fixture.database('directus_permissions').select('id').where({ role, collection });
+
+		const [localPermission] = await fixture
+			.database('directus_permissions')
+			.insert({ role: fixture.data.roles.peerReader, collection, namespace: peer.id, action: 'read', fields: 'id' })
+			.returning('id');
+
+		try {
+			error(
+				await fixture.request('legacy', '/permissions', {
+					token,
+					method: 'POST',
+					body: { role, collection, namespace: peer.id, action: 'read', fields: ['id'] },
+				}),
+				403,
+				'FORBIDDEN'
+			);
+
+			const graphql = ok(
+				await fixture.request('legacy', '/graphql/system', {
+					token,
+					method: 'POST',
+					body: {
+						query: `mutation { update_permissions_item(id: "${localPermission.id}", data: { role: { id: "${role}" } }) { id } }`,
+					},
+				})
+			);
+
+			assert.ok(graphql.errors?.length);
+			assert.ok(graphql.data?.update_permissions_item == null);
+
+			assert.deepEqual(
+				await fixture.database('directus_permissions').select('id').where({ role, collection }),
+				original
+			);
+
+			assert.equal(
+				(await fixture.database('directus_permissions').where({ id: localPermission.id }).first()).role,
+				fixture.data.roles.peerReader
+			);
+		} finally {
+			await fixture.database('directus_permissions').where({ id: localPermission.id }).delete();
+
+			await fixture
+				.database('directus_permissions')
+				.where({ role, collection })
+				.whereNotIn(
+					'id',
+					original.map((entry) => entry.id)
+				)
+				.delete();
+		}
+	});
+
 	it('namespace admin user lists contain local members rather than the global directory', async () => {
 		const token = await scoped('localAdmin');
 		const users = ok(await fixture.request('legacy', '/users', { token, query: { fields: 'id', sort: 'id' } })).data;
 		const labels = new Map(Object.entries(fixture.data.users).map(([label, id]) => [id, label]));
 		assert.deepEqual(users.map((user) => labels.get(user.id) ?? user.id).sort(), ['localAdmin', 'member']);
+	});
+
+	it('scoped user reads, SEARCH, pagination and counts share membership boundaries', async () => {
+		const token = await scoped('localAdmin');
+		const local = [fixture.data.users.localAdmin, fixture.data.users.member].sort();
+
+		const page = ok(
+			await fixture.request('legacy', '/users', { token, query: { fields: 'id', sort: 'id', limit: 1, meta: '*' } })
+		);
+
+		assert.deepEqual(page, { data: [{ id: local[0] }], meta: { total_count: 2, filter_count: 2 } });
+
+		const searched = ok(
+			await fixture.request('legacy', '/users', {
+				token,
+				method: 'SEARCH',
+				body: { keys: Object.values(fixture.data.users), query: { fields: ['id'], sort: ['id'] } },
+			})
+		);
+
+		assert.deepEqual(
+			searched.data.map((user) => user.id),
+			local
+		);
+
+		ok(await fixture.request('legacy', `/users/${local[0]}`, { token, query: { fields: 'id' } }));
+		error(await fixture.request('legacy', `/users/${fixture.data.users.outsider}`, { token }), 403, 'FORBIDDEN');
+
+		const filtered = ok(
+			await fixture.request('legacy', '/users', {
+				token,
+				query: { fields: 'id', filter: { id: { _eq: fixture.data.users.outsider } }, meta: '*' },
+			})
+		);
+
+		assert.deepEqual(filtered, { data: [], meta: { total_count: 2, filter_count: 0 } });
+	});
+
+	it('GraphQL user lists, individual reads and aggregates stay scoped', async () => {
+		const token = await scoped('localAdmin');
+
+		const response = ok(
+			await fixture.request('legacy', '/graphql/system', {
+				token,
+				method: 'POST',
+				body: {
+					query: `{ users(sort: ["id"]) { id } users_aggregated { count { id } } outside: users_by_id(id: "${fixture.data.users.outsider}") { id } }`,
+				},
+			})
+		);
+
+		assert.deepEqual(
+			response.data.users.map((user) => user.id),
+			[fixture.data.users.localAdmin, fixture.data.users.member].sort()
+		);
+
+		assert.equal(Number(response.data.users_aggregated[0].count.id), 2);
+		assert.equal(response.data.outside, null);
+		assert.equal(response.errors, undefined);
+	});
+
+	it('expanded user relations and relational filters cannot expose nonmembers', async () => {
+		const token = await scoped('localAdmin');
+
+		const expected = [
+			{ id: 'first', compat_owner: { id: fixture.data.users.member, email: 'member@compat.example.com' } },
+			{ id: 'second', compat_owner: null },
+		];
+
+		assert.deepEqual(
+			ok(
+				await fixture.request('legacy', '/items/tracking_events', {
+					token,
+					query: { fields: 'id,compat_owner.id,compat_owner.email', sort: 'id' },
+				})
+			).data,
+			expected
+		);
+
+		assert.deepEqual(
+			ok(
+				await fixture.request('legacy', '/graphql', {
+					token,
+					method: 'POST',
+					body: { query: '{ tracking_events(sort: ["id"]) { id compat_owner { id email } } }' },
+				})
+			),
+			{ data: { tracking_events: expected } }
+		);
+
+		const filtered = ok(
+			await fixture.request('legacy', '/items/tracking_events', {
+				token,
+				query: { fields: 'id', filter: { compat_owner: { email: { _eq: 'outsider@compat.example.com' } } }, meta: '*' },
+			})
+		);
+
+		assert.deepEqual(filtered, { data: [], meta: { total_count: 2, filter_count: 0 } });
+	});
+
+	it('inverse user relations and relational counts exclude nonmembers', async () => {
+		const token = await scoped('localAdmin');
+		const ids = [fixture.data.users.member, fixture.data.users.outsider];
+		const original = await fixture.database('directus_users').select('id', 'role').whereIn('id', ids);
+
+		try {
+			await fixture.database('directus_users').whereIn('id', ids).update({ role: fixture.data.roles.peerReader });
+
+			const response = ok(
+				await fixture.request('legacy', `/roles/${fixture.data.roles.peerReader}`, {
+					token,
+					query: { fields: 'id,users.id,count(users)' },
+				})
+			);
+
+			assert.equal(response.data.id, fixture.data.roles.peerReader);
+			assert.deepEqual(response.data.users, [{ id: fixture.data.users.member }]);
+			assert.equal(Number(response.data.users_count), 1);
+
+			const graphql = ok(
+				await fixture.request('legacy', '/graphql/system', {
+					token,
+					method: 'POST',
+					body: {
+						query: `{ roles_by_id(id: "${fixture.data.roles.peerReader}") { id users { id } users_func { count } } }`,
+					},
+				})
+			);
+
+			assert.deepEqual(graphql, {
+				data: {
+					roles_by_id: {
+						id: fixture.data.roles.peerReader,
+						users: [{ id: fixture.data.users.member }],
+						users_func: { count: 1 },
+					},
+				},
+			});
+
+			const filtered = ok(
+				await fixture.request('legacy', '/roles', {
+					token,
+					query: { fields: 'id', filter: { id: { _eq: fixture.data.roles.peerReader }, 'count(users)': { _eq: 2 } } },
+				})
+			);
+
+			assert.deepEqual(filtered.data, []);
+		} finally {
+			for (const user of original)
+				await fixture.database('directus_users').where({ id: user.id }).update({ role: user.role });
+		}
+	});
+
+	it('membership removal invalidates warmed user lists, counts and nested results without losing cache HITs', async () => {
+		const token = await scoped('localAdmin');
+
+		const membership = await fixture
+			.database('directus_user_namespaces')
+			.where({ user_id: fixture.data.users.member, namespace_id: peer.id })
+			.first();
+
+		const requests = [
+			['/users', { fields: 'id', sort: 'id', meta: '*' }],
+			['/items/tracking_events', { fields: 'id,compat_owner.id', sort: 'id' }],
+		];
+
+		for (const [path, query] of requests) {
+			ok(await fixture.request('legacy', path, { token, query }));
+			const repeat = await fixture.request('legacy', path, { token, query });
+			ok(repeat);
+			assert.equal(repeat.headers.get('x-compat-cache'), 'HIT');
+		}
+
+		try {
+			await fixture.database('directus_user_namespaces').where({ id: membership.id }).delete();
+			const users = await fixture.request('legacy', requests[0][0], { token, query: requests[0][1] });
+			assert.notEqual(users.headers.get('x-compat-cache'), 'HIT');
+
+			assert.deepEqual(ok(users), {
+				data: [{ id: fixture.data.users.localAdmin }],
+				meta: { total_count: 1, filter_count: 1 },
+			});
+
+			const nested = ok(await fixture.request('legacy', requests[1][0], { token, query: requests[1][1] }));
+
+			assert.deepEqual(nested.data, [
+				{ id: 'first', compat_owner: null },
+				{ id: 'second', compat_owner: null },
+			]);
+		} finally {
+			await fixture.database('directus_user_namespaces').insert(membership);
+		}
+	});
+
+	it('revoked namespace admins cannot reuse warmed member-list or lookup responses', async () => {
+		const token = await scoped('localAdmin');
+
+		const membership = await fixture
+			.database('directus_user_namespaces')
+			.where({ user_id: fixture.data.users.localAdmin, namespace_id: peer.id })
+			.first();
+
+		const paths = [`/namespaces/${peer.id}/members`, `/namespaces/${peer.id}/members/lookup`];
+
+		for (const path of paths) {
+			ok(await fixture.request('legacy', path, { token }));
+			const response = await fixture.request('legacy', path, { token });
+			ok(response);
+			assert.notEqual(response.headers.get('x-compat-cache'), 'HIT');
+		}
+
+		try {
+			await fixture.database('directus_user_namespaces').where({ id: membership.id }).delete();
+			for (const path of paths) error(await fixture.request('legacy', path, { token }), 403, 'FORBIDDEN');
+		} finally {
+			await fixture.database('directus_user_namespaces').insert(membership);
+		}
+	});
+
+	it('case-insensitive namespace control routes cannot bypass cache revocation checks', async () => {
+		const token = (await login('legacy', 'localAdmin')).access_token;
+
+		const membership = await fixture
+			.database('directus_user_namespaces')
+			.where({ user_id: fixture.data.users.localAdmin, namespace_id: peer.id })
+			.first();
+
+		const mainMembership = {
+			id: randomUUID(),
+			user_id: fixture.data.users.localAdmin,
+			namespace_id: 'main',
+			role_id: fixture.data.roles.outsider,
+		};
+
+		const paths = [`/Namespaces/${peer.id}/members`, `/Namespaces/${peer.id}/members/lookup`];
+		const options = { token, headers: { 'x-namespace': 'main' } };
+
+		try {
+			await fixture.database('directus_user_namespaces').insert(mainMembership);
+
+			for (const path of paths) {
+				ok(await fixture.request('legacy', path, options));
+				const response = await fixture.request('legacy', path, options);
+				ok(response);
+				assert.notEqual(response.headers.get('x-compat-cache'), 'HIT');
+			}
+
+			await fixture.database('directus_user_namespaces').where({ id: membership.id }).delete();
+			for (const path of paths) error(await fixture.request('legacy', path, options), 403, 'FORBIDDEN');
+		} finally {
+			await fixture.database('directus_user_namespaces').where({ id: mainMembership.id }).delete();
+
+			if (!(await fixture.database('directus_user_namespaces').where({ id: membership.id }).first())) {
+				await fixture.database('directus_user_namespaces').insert(membership);
+			}
+		}
+	});
+
+	it('a child-owned primary admin role cannot grant platform authority through static or JWT credentials', async () => {
+		const id = fixture.data.users.localAdmin;
+		const original = await fixture.database('directus_users').where({ id }).first();
+
+		try {
+			await fixture.database('directus_users').where({ id }).update({ role: fixture.data.roles.localAdmin });
+			const session = await login('legacy', 'localAdmin');
+
+			error(
+				await fixture.request('legacy', '/namespaces/main/token', { token: session.access_token, method: 'POST' }),
+				403,
+				'FORBIDDEN'
+			);
+
+			for (const token of [tokens.localAdmin, session.access_token]) {
+				error(await fixture.request('legacy', '/namespaces/main/members', { token }), 403, 'FORBIDDEN');
+
+				error(
+					await fixture.request('legacy', '/utils/cache/clear', {
+						token,
+						method: 'POST',
+						headers: { 'x-namespace': peer.id },
+					}),
+					403,
+					'FORBIDDEN'
+				);
+			}
+		} finally {
+			await fixture.database('directus_users').where({ id }).update({ role: original.role });
+		}
+	});
+
+	it('demotion from global authority cannot reuse a warmed global user directory', async () => {
+		const id = fixture.data.users.admin;
+		const original = await fixture.database('directus_users').where({ id }).first();
+		const token = await scoped();
+		const query = { fields: 'id', sort: 'id' };
+		assert.equal(ok(await fixture.request('legacy', '/users', { token, query })).data.length, 5);
+		const membership = { id: randomUUID(), user_id: id, namespace_id: peer.id, role_id: fixture.data.roles.localAdmin };
+
+		try {
+			await fixture.database('directus_user_namespaces').insert(membership);
+			await fixture.database('directus_users').where({ id }).update({ role: fixture.data.roles.outsider });
+			const response = await fixture.request('legacy', '/users', { token, query });
+			assert.notEqual(response.headers.get('x-compat-cache'), 'HIT');
+
+			assert.deepEqual(
+				ok(response).data.map((user) => user.id),
+				[id, fixture.data.users.localAdmin, fixture.data.users.member].sort()
+			);
+		} finally {
+			await fixture.database('directus_users').where({ id }).update({ role: original.role });
+			await fixture.database('directus_user_namespaces').where({ id: membership.id }).delete();
+		}
 	});
 
 	it('revocation denies warmed content without ending the shared session or other namespace access', async () => {
