@@ -28,7 +28,7 @@
 		</template>
 		<template #actions>
 			<search-input
-				:model-value="search"
+				:model-value="search || null"
 				:filter="memberFilter"
 				collection="directus_users"
 				@update:model-value="search = $event ?? ''"
