@@ -1,6 +1,6 @@
 # C5 — Membership admin UI
 
-Status: **Not started**. Owner: Martin. Required for the prototype. [Progress tracker](README.md).
+Status: **In progress** in the User Directory follow-up to PR #1. Owner: Martin. Required for the prototype. [Progress tracker](README.md).
 
 ## Outcome
 
@@ -29,11 +29,11 @@ Members/assignment page structure can start with agreed fixtures. Live assignmen
 
 ## Local implementation checklist
 
-- [ ] Define member/lookup/local-role DTOs and lifecycle adapter operations under the active namespace.
+- [x] Define member/lookup/local-role DTOs and lifecycle adapter operations under the active namespace.
 - [ ] Reuse the native User Directory module/page, navigation and layout conventions with a child-member data adapter and membership-specific actions. Ordinary content/shared-user read does not automatically expose admin controls; do not introduce a separate mock-style Members screen.
-- [ ] Load only active-namespace members and local role counts; clear list/filter/search/editor state through C2 on switch.
+- [x] Load only active-namespace members and local role counts; clear list/filter/search/editor state through C2 on switch.
 - [ ] Add **Add existing user** search picker with minimal agreed fields, pagination/loading/errors and local-role selection. Do not preload/list the entire shared directory.
-- [ ] Add assign/change/unassign operations; handle existing member, inactive user, validation/concurrency and removed-access errors.
+- [ ] Add assign/change/unassign operations; finish specific duplicate/inactive/concurrency and removed-access error handling. The first UI slice uses D05 lifecycle endpoints and avoids retrying an ambiguous write.
 - [ ] After lifecycle operations, refresh member list/counts and current-user access if affected. Unassign removes no global profile/account/other role; it cannot revoke inherited Global Admin authority.
 - [ ] Implement backend's self-unassignment/last-local-admin policy. If denied, preserve membership; if permitted and access is lost, leave protected content and offer authorized alternatives.
 - [ ] Keep global account/profile/create/delete/invite actions unavailable to local-admin Members views, including direct routes/keyboard/batch actions. A Global Admin may separately open global Administration while content stays in a child; that platform view is not a local-admin privilege. Do not reuse global `useItem('directus_users')` writes for memberships.
@@ -67,8 +67,8 @@ Recommended new module: `app/src/modules/members/`. Existing main-user screens: 
 
 ## Completion evidence
 
-Implementation commit/PR: —
+Implementation branch: `codex/scoped-user-directory-followup`, based on PR #1 and carrying the scoped directory work from merged PR #6. This slice adds a child member directory, a search-only existing-user picker, local-role assignment/change/removal and direct shared-profile route protection. The combined branch builds; browser review of this branch remains open.
 
 Member/local-admin and negative API checks: —
 
-Open dependencies or limitations: D05/D09/D11/D14, relevant D08/D10 and core C2–C4 integration.
+Open dependencies or limitations: D05 needs server-side role filtering before its native role navigation can return complete pages. The child member endpoint has no detail-by-ID read for profile popovers/deep links. D09/D11/D14, relevant D08/D10 and broader C2–C4 surface integration remain.
