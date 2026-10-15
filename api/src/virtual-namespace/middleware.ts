@@ -9,7 +9,7 @@ import { isControlPlanePath } from './paths.js';
 import { getNamespace } from './registry.js';
 import { pickNamespace } from './resolve.js';
 import { getActiveNamespaceId } from './context.js';
-import { isAlwaysBlockedWrite, namespaceOwnedWrite, targetIdFromPath } from './admin-scope.js';
+import { isAlwaysBlockedWrite, isBlockedUserRead, namespaceOwnedWrite, targetIdFromPath } from './admin-scope.js';
 
 /**
  * The namespace the request asks for, keeping the claim and the header separate
@@ -109,7 +109,7 @@ export function namespaceAdminScope(): RequestHandler {
 			return;
 		}
 
-		if (isAlwaysBlockedWrite(req.method, req.path)) {
+		if (isAlwaysBlockedWrite(req.method, req.path) || isBlockedUserRead(req.method, req.path)) {
 			throw new ForbiddenException();
 		}
 

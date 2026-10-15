@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { isAlwaysBlockedWrite, namespaceOwnedWrite, targetIdFromPath } from './admin-scope.js';
+import type { Request, Response } from 'express';
+import { isAlwaysBlockedWrite, isBlockedUserRead, namespaceOwnedWrite, targetIdFromPath } from './admin-scope.js';
+import { namespaceAdminScope } from './middleware.js';
+import { ForbiddenException } from '../exceptions/index.js';
 
 describe('isAlwaysBlockedWrite', () => {
 	test('blocks instance-wide surfaces', () => {
@@ -10,7 +13,7 @@ describe('isAlwaysBlockedWrite', () => {
 		expect(isAlwaysBlockedWrite('DELETE', '/files/abc')).toBe(true);
 	});
 
-	test('leaves reads open — a namespace admin must see all users', () => {
+	test('leaves general reads to their normal authorization path', () => {
 		expect(isAlwaysBlockedWrite('GET', '/users')).toBe(false);
 		expect(isAlwaysBlockedWrite('GET', '/users/abc')).toBe(false);
 		expect(isAlwaysBlockedWrite('HEAD', '/files/abc')).toBe(false);
@@ -28,6 +31,44 @@ describe('isAlwaysBlockedWrite', () => {
 	test('does not match lookalike paths', () => {
 		expect(isAlwaysBlockedWrite('POST', '/usersomething')).toBe(false);
 		expect(isAlwaysBlockedWrite('POST', '/settings-backup')).toBe(false);
+	});
+});
+
+describe('isBlockedUserRead', () => {
+	test('blocks shared user listing and profile reads for local admins', () => {
+		expect(isBlockedUserRead('GET', '/users')).toBe(true);
+		expect(isBlockedUserRead('GET', '/users/abc')).toBe(true);
+		expect(isBlockedUserRead('HEAD', '/users')).toBe(true);
+		expect(isBlockedUserRead('SEARCH', '/users')).toBe(true);
+	});
+
+	test('preserves self read and unrelated paths', () => {
+		expect(isBlockedUserRead('GET', '/users/me')).toBe(false);
+		expect(isBlockedUserRead('GET', '/usersettings')).toBe(false);
+		expect(isBlockedUserRead('GET', '/roles')).toBe(false);
+		expect(isBlockedUserRead('POST', '/users')).toBe(false);
+	});
+});
+
+describe('namespaceAdminScope user reads', () => {
+	async function check(path: string, scopedAdmin: boolean): Promise<unknown> {
+		return new Promise((resolve) => {
+			namespaceAdminScope()(
+				{ method: 'GET', path, namespaceScopedAdmin: scopedAdmin } as Request,
+				{} as Response,
+				(error) => resolve(error)
+			);
+		});
+	}
+
+	test('denies local admin access to shared user reads', async () => {
+		expect(await check('/users', true)).toBeInstanceOf(ForbiddenException);
+		expect(await check('/users/other-user', true)).toBeInstanceOf(ForbiddenException);
+	});
+
+	test('leaves self reads and global admin reads available', async () => {
+		expect(await check('/users/me', true)).toBeUndefined();
+		expect(await check('/users', false)).toBeUndefined();
 	});
 });
 

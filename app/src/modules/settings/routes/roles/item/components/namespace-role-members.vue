@@ -13,7 +13,7 @@
 		</v-list>
 
 		<div class="actions">
-			<v-button :disabled="assigning" @click="pickerOpen = true">{{ t('add_existing') }}</v-button>
+			<v-button :disabled="assigning" @click="openPicker">{{ t('add_existing') }}</v-button>
 			<div class="spacer" />
 			<v-button v-if="members.length < total" secondary :loading="loadingMembers" @click="loadMembers">
 				{{ t('interfaces.select-multiple-checkbox.show_more', { count: total - members.length }) }}
@@ -23,8 +23,9 @@
 		<drawer-collection
 			v-model:active="pickerOpen"
 			collection="directus_users"
-			:filter="pickerFilter"
 			multiple
+			search-required
+			search-hint="Enter at least two letters or digits to search existing users."
 			@input="assignSelected"
 		/>
 	</section>
@@ -33,8 +34,10 @@
 <script setup lang="ts">
 import api from '@/api';
 import DrawerCollection from '@/views/private/components/drawer-collection.vue';
-import { computed, onMounted, ref, watch } from 'vue';
+import { itemsSourceKey } from '@wbce-d9/composables';
+import { computed, onMounted, provide, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { createNamespaceUserLookupSource, type LookupCandidate } from './namespace-user-lookup';
 
 type Person = {
 	user_id: string;
@@ -44,7 +47,6 @@ type Person = {
 };
 
 type Member = Person & { role: { id: string } | null };
-type Candidate = Person & { role_id: string | null };
 
 const props = defineProps<{ namespaceId: string; roleId: string }>();
 const { t } = useI18n();
@@ -55,10 +57,19 @@ const membersError = ref<string | null>(null);
 const assignmentError = ref<string | null>(null);
 const pickerOpen = ref(false);
 const assigning = ref(false);
+const candidateMap = new Map<string, LookupCandidate>();
+const excludedIds = computed(() => members.value.map((member) => member.user_id));
 
-const pickerFilter = computed(() =>
-	members.value.length > 0 ? { id: { _nin: members.value.map((member) => member.user_id) } } : null
+provide(
+	itemsSourceKey,
+	createNamespaceUserLookupSource(pickerOpen, excludedIds, (candidates) => {
+		for (const candidate of candidates) {
+			if (candidate.status === 'active') candidateMap.set(candidate.user_id, candidate);
+		}
+	})
 );
+
+provide('namespace-member-view', true);
 
 let membersRequest = 0;
 
@@ -79,10 +90,17 @@ function errorMessage(error: any, fallback: string): string {
 
 function resetMembers() {
 	membersRequest++;
+	pickerOpen.value = false;
+	candidateMap.clear();
 	members.value = [];
 	total.value = 0;
 	loadingMembers.value = false;
 	void loadMembers();
+}
+
+function openPicker() {
+	candidateMap.clear();
+	pickerOpen.value = true;
 }
 
 async function loadMembers() {
@@ -116,12 +134,7 @@ async function assignSelected(userIds: (string | number)[]) {
 	try {
 		for (const userId of userIds) {
 			const id = String(userId);
-
-			const response = await api.get<{ data: Candidate[] }>(`${base}/lookup`, {
-				params: { user_id: id, limit: 1 },
-			});
-
-			const candidate = response.data.data[0];
+			const candidate = candidateMap.get(id);
 
 			if (!candidate || candidate.user_id !== id) throw new Error('Could not find the selected user');
 			if (candidate.role_id === props.roleId) continue;

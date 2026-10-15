@@ -160,17 +160,24 @@ export async function listMembers(
 /**
  * Candidates for the *Add existing user* picker.
  *
- * Reads the shared directory but returns only agreed identity fields and a page
- * at a time — a local admin picks an existing account, it does not browse the
- * directory.
+ * Searches the shared directory but returns only agreed identity fields and a
+ * small bounded result. It never supports browsing without a search.
  */
 export async function lookupUsers(
 	database: Knex,
 	namespaceId: string,
 	search: string | undefined,
-	limit = 20,
-	userId?: string
+	limit = 20
 ): Promise<MemberCandidate[]> {
+	const term = search?.trim();
+
+	if (!term || [...term.matchAll(/[\p{L}\p{N}]/gu)].length < 2 || term.length > 100) {
+		throw new InvalidPayloadException('Search must contain at least two letters or digits and at most 100 characters');
+	}
+
+	const boundedLimit = Number.isFinite(limit) ? Math.min(20, Math.max(1, Math.trunc(limit))) : 20;
+	const like = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
+
 	const query = database
 		.select({
 			user_id: 'u.id',
@@ -185,17 +192,11 @@ export async function lookupUsers(
 			this.on('m.user_id', '=', 'u.id').andOn('m.namespace_id', '=', database.raw('?', [namespaceId]));
 		});
 
-	if (userId) query.where('u.id', userId);
+	query.where((sub) =>
+		sub.where('u.email', 'ilike', like).orWhere('u.first_name', 'ilike', like).orWhere('u.last_name', 'ilike', like)
+	);
 
-	if (search) {
-		const like = `%${search}%`;
-
-		query.where((sub) =>
-			sub.where('u.email', 'ilike', like).orWhere('u.first_name', 'ilike', like).orWhere('u.last_name', 'ilike', like)
-		);
-	}
-
-	const rows = await query.orderBy('u.email', 'asc').limit(limit);
+	const rows = await query.orderBy('u.email', 'asc').limit(boundedLimit);
 
 	return rows.map((row) => ({
 		user_id: row.user_id,

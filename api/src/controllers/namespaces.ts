@@ -129,13 +129,7 @@ router.get(
 		const search = typeof req.query['search'] === 'string' ? (req.query['search'] as string) : undefined;
 
 		res.locals['payload'] = {
-			data: await lookupUsers(
-				getDatabase(),
-				namespaceId,
-				search,
-				optionalNumber(req.query['limit']) ?? 20,
-				typeof req.query['user_id'] === 'string' ? req.query['user_id'] : undefined
-			),
+			data: await lookupUsers(getDatabase(), namespaceId, search, optionalNumber(req.query['limit']) ?? 20),
 		};
 
 		return next();

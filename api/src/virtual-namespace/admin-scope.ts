@@ -13,7 +13,7 @@
  * the effective-capability split D04 describes; this is the edge restriction that
  * closes the escalation meanwhile.
  *
- * Reads stay open: a namespace admin is required to *see* all users.
+ * Shared user records are read through namespace-specific membership endpoints.
  */
 
 /** Writes that are never available to a namespace-scoped admin. */
@@ -49,13 +49,18 @@ export function isAlwaysBlockedWrite(method: string, path: string): boolean {
 	return ALWAYS_BLOCKED.some((prefix) => isSameOrChildPath(path, prefix));
 }
 
+/** Shared user listings and profiles cannot be read using local admin authority. */
+export function isBlockedUserRead(method: string, path: string): boolean {
+	const upper = method.toUpperCase();
+	if (!['GET', 'HEAD', 'SEARCH'].includes(upper)) return false;
+	if (path === '/users/me') return false;
+	return isSameOrChildPath(path, '/users');
+}
+
 /**
  * The namespace-owned table this request would write to, if any.
  */
-export function namespaceOwnedWrite(
-	method: string,
-	path: string
-): { prefix: string; table: string } | undefined {
+export function namespaceOwnedWrite(method: string, path: string): { prefix: string; table: string } | undefined {
 	if (isRead(method)) return undefined;
 
 	return NAMESPACE_OWNED.find((entry) => isSameOrChildPath(path, entry.prefix));
@@ -68,10 +73,7 @@ export function namespaceOwnedWrite(
  * it necessarily lands in the admin's own area.
  */
 export function targetIdFromPath(path: string, prefix: string): string | undefined {
-	const [id] = path
-		.slice(prefix.length)
-		.replace(/^\/+/, '')
-		.split('/');
+	const [id] = path.slice(prefix.length).replace(/^\/+/, '').split('/');
 
 	return id ? id : undefined;
 }
