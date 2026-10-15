@@ -1,8 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { Request, Response } from 'express';
-import { isAlwaysBlockedWrite, isBlockedUserRead, namespaceOwnedWrite, targetIdFromPath } from './admin-scope.js';
+import { isAlwaysBlockedWrite, namespaceOwnedWrite, targetIdFromPath } from './admin-scope.js';
 import { namespaceAdminScope } from './middleware.js';
-import { ForbiddenException } from '../exceptions/index.js';
 
 describe('isAlwaysBlockedWrite', () => {
 	test('blocks instance-wide surfaces', () => {
@@ -34,22 +33,6 @@ describe('isAlwaysBlockedWrite', () => {
 	});
 });
 
-describe('isBlockedUserRead', () => {
-	test('blocks shared user listing and profile reads for local admins', () => {
-		expect(isBlockedUserRead('GET', '/users')).toBe(true);
-		expect(isBlockedUserRead('GET', '/users/abc')).toBe(true);
-		expect(isBlockedUserRead('HEAD', '/users')).toBe(true);
-		expect(isBlockedUserRead('SEARCH', '/users')).toBe(true);
-	});
-
-	test('preserves self read and unrelated paths', () => {
-		expect(isBlockedUserRead('GET', '/users/me')).toBe(false);
-		expect(isBlockedUserRead('GET', '/usersettings')).toBe(false);
-		expect(isBlockedUserRead('GET', '/roles')).toBe(false);
-		expect(isBlockedUserRead('POST', '/users')).toBe(false);
-	});
-});
-
 describe('namespaceAdminScope user reads', () => {
 	async function check(path: string, scopedAdmin: boolean): Promise<unknown> {
 		return new Promise((resolve) => {
@@ -61,12 +44,9 @@ describe('namespaceAdminScope user reads', () => {
 		});
 	}
 
-	test('denies local admin access to shared user reads', async () => {
-		expect(await check('/users', true)).toBeInstanceOf(ForbiddenException);
-		expect(await check('/users/other-user', true)).toBeInstanceOf(ForbiddenException);
-	});
-
-	test('leaves self reads and global admin reads available', async () => {
+	test('leaves user reads to the service membership scope', async () => {
+		expect(await check('/users', true)).toBeUndefined();
+		expect(await check('/users/other-user', true)).toBeUndefined();
 		expect(await check('/users/me', true)).toBeUndefined();
 		expect(await check('/users', false)).toBeUndefined();
 	});

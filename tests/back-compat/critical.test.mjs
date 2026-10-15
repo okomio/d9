@@ -1603,11 +1603,15 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 			.where({ user_id: fixture.data.users.localAdmin, namespace_id: peer.id })
 			.first();
 
-		const paths = [`/namespaces/${peer.id}/members`, `/namespaces/${peer.id}/members/lookup`];
+		// The existing-user lookup is bounded to a search term; the member list is not.
+		const paths = [
+			[`/namespaces/${peer.id}/members`, {}],
+			[`/namespaces/${peer.id}/members/lookup`, { search: 'compat' }],
+		];
 
-		for (const path of paths) {
-			ok(await fixture.request('legacy', path, { token }));
-			const response = await fixture.request('legacy', path, { token });
+		for (const [path, query] of paths) {
+			ok(await fixture.request('legacy', path, { token, query }));
+			const response = await fixture.request('legacy', path, { token, query });
 			ok(response);
 			// `/namespaces/*` is never cached, so there is no warmed response to reuse here.
 			assert.notEqual(response.headers.get('x-compat-cache'), 'HIT');
@@ -1615,7 +1619,8 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 
 		try {
 			await fixture.database('directus_user_namespaces').where({ id: membership.id }).delete();
-			for (const path of paths) error(await fixture.request('legacy', path, { token }), 403, 'FORBIDDEN');
+			for (const [path, query] of paths)
+				error(await fixture.request('legacy', path, { token, query }), 403, 'FORBIDDEN');
 		} finally {
 			await fixture.database('directus_user_namespaces').insert(membership);
 		}
@@ -1636,22 +1641,26 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 			role_id: fixture.data.roles.outsider,
 		};
 
-		const paths = [`/Namespaces/${peer.id}/members`, `/Namespaces/${peer.id}/members/lookup`];
+		const paths = [
+			[`/Namespaces/${peer.id}/members`, {}],
+			[`/Namespaces/${peer.id}/members/lookup`, { search: 'compat' }],
+		];
 		const options = { token, headers: { 'x-namespace': 'main' } };
 
 		try {
 			await fixture.database('directus_user_namespaces').insert(mainMembership);
 
-			for (const path of paths) {
-				ok(await fixture.request('legacy', path, options));
-				const response = await fixture.request('legacy', path, options);
+			for (const [path, query] of paths) {
+				ok(await fixture.request('legacy', path, { ...options, query }));
+				const response = await fixture.request('legacy', path, { ...options, query });
 				ok(response);
 				// These routes are never cached either, and casing must not change that.
 				assert.notEqual(response.headers.get('x-compat-cache'), 'HIT');
 			}
 
 			await fixture.database('directus_user_namespaces').where({ id: membership.id }).delete();
-			for (const path of paths) error(await fixture.request('legacy', path, options), 403, 'FORBIDDEN');
+			for (const [path, query] of paths)
+				error(await fixture.request('legacy', path, { ...options, query }), 403, 'FORBIDDEN');
 		} finally {
 			await fixture.database('directus_user_namespaces').where({ id: mainMembership.id }).delete();
 
