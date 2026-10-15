@@ -20,7 +20,9 @@ export type MemberList = {
 	role_counts: Record<string, number>;
 };
 
-const USER_FIELDS = ['id', 'email', 'first_name', 'last_name', 'status'];
+export type MemberCandidate = Pick<Member, 'user_id' | 'email' | 'first_name' | 'last_name' | 'status'> & {
+	role_id: string | null;
+};
 
 /**
  * Whether this caller may administer the namespace's members.
@@ -82,7 +84,12 @@ async function assertKeepsAnAdmin(database: Knex, namespaceId: string, userId: s
 export async function listMembers(
 	database: Knex,
 	namespaceId: string,
-	options: { search?: string | undefined; limit?: number | undefined; offset?: number | undefined } = {}
+	options: {
+		search?: string | undefined;
+		roleId?: string | undefined;
+		limit?: number | undefined;
+		offset?: number | undefined;
+	} = {}
 ): Promise<MemberList> {
 	const base = () => {
 		const query = database
@@ -91,8 +98,11 @@ export async function listMembers(
 			.leftJoin(`${ROLES_TABLE} as r`, 'm.role_id', 'r.id')
 			.where('m.namespace_id', namespaceId);
 
+		if (options.roleId) query.andWhere('m.role_id', options.roleId);
+
 		if (options.search) {
 			const like = `%${options.search}%`;
+
 			query.andWhere((sub) =>
 				sub.where('u.email', 'ilike', like).orWhere('u.first_name', 'ilike', like).orWhere('u.last_name', 'ilike', like)
 			);
@@ -156,26 +166,41 @@ export async function listMembers(
  */
 export async function lookupUsers(
 	database: Knex,
+	namespaceId: string,
 	search: string | undefined,
 	limit = 20
-): Promise<Pick<Member, 'user_id' | 'email' | 'first_name' | 'last_name' | 'status'>[]> {
-	const query = database.select(USER_FIELDS).from(USERS_TABLE);
+): Promise<MemberCandidate[]> {
+	const query = database
+		.select({
+			user_id: 'u.id',
+			email: 'u.email',
+			first_name: 'u.first_name',
+			last_name: 'u.last_name',
+			status: 'u.status',
+			role_id: 'm.role_id',
+		})
+		.from(`${USERS_TABLE} as u`)
+		.leftJoin(`${MEMBERSHIP_TABLE} as m`, function () {
+			this.on('m.user_id', '=', 'u.id').andOn('m.namespace_id', '=', database.raw('?', [namespaceId]));
+		});
 
 	if (search) {
 		const like = `%${search}%`;
+
 		query.where((sub) =>
-			sub.where('email', 'ilike', like).orWhere('first_name', 'ilike', like).orWhere('last_name', 'ilike', like)
+			sub.where('u.email', 'ilike', like).orWhere('u.first_name', 'ilike', like).orWhere('u.last_name', 'ilike', like)
 		);
 	}
 
-	const rows = await query.orderBy('email', 'asc').limit(limit);
+	const rows = await query.orderBy('u.email', 'asc').limit(limit);
 
 	return rows.map((row) => ({
-		user_id: row.id,
+		user_id: row.user_id,
 		email: row.email ?? null,
 		first_name: row.first_name ?? null,
 		last_name: row.last_name ?? null,
 		status: row.status ?? null,
+		role_id: row.role_id ?? null,
 	}));
 }
 
@@ -187,7 +212,11 @@ export async function addMember(database: Knex, namespaceId: string, userId: str
 
 	if (!user) throw new InvalidPayloadException(`Unknown user "${userId}"`);
 
-	const existing = await database.select('id').from(MEMBERSHIP_TABLE).where({ user_id: userId, namespace_id: namespaceId }).first();
+	const existing = await database
+		.select('id')
+		.from(MEMBERSHIP_TABLE)
+		.where({ user_id: userId, namespace_id: namespaceId })
+		.first();
 
 	if (existing) throw new UnprocessableEntityException('Already a member of this namespace');
 
@@ -200,7 +229,12 @@ export async function addMember(database: Knex, namespaceId: string, userId: str
 }
 
 /** Changes a local role. Cannot demote the last admin. */
-export async function updateMemberRole(database: Knex, namespaceId: string, userId: string, roleId: string): Promise<void> {
+export async function updateMemberRole(
+	database: Knex,
+	namespaceId: string,
+	userId: string,
+	roleId: string
+): Promise<void> {
 	await assertRoleBelongs(database, namespaceId, roleId);
 
 	const current = await database

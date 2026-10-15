@@ -103,6 +103,7 @@ router.get(
 
 		const result = await listMembers(getDatabase(), namespaceId, {
 			search,
+			roleId: typeof req.query['role_id'] === 'string' ? req.query['role_id'] : undefined,
 			limit: optionalNumber(req.query['limit']),
 			offset: optionalNumber(req.query['offset']),
 		});
@@ -127,7 +128,9 @@ router.get(
 
 		const search = typeof req.query['search'] === 'string' ? (req.query['search'] as string) : undefined;
 
-		res.locals['payload'] = { data: await lookupUsers(getDatabase(), search, optionalNumber(req.query['limit']) ?? 20) };
+		res.locals['payload'] = {
+			data: await lookupUsers(getDatabase(), namespaceId, search, optionalNumber(req.query['limit']) ?? 20),
+		};
 
 		return next();
 	}),

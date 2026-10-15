@@ -6,6 +6,7 @@ import type { MockedFunction, MockInstance } from 'vitest';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ForbiddenException, UnprocessableEntityException } from '../exceptions/index.js';
 import { ItemsService, PermissionsService, PresetsService, RolesService, UsersService } from './index.js';
+import { runWithNamespace } from '../virtual-namespace/context.js';
 
 vi.mock('../../src/database/index', () => {
 	return { __esModule: true, default: vi.fn(), getDatabaseClient: vi.fn().mockReturnValue('postgres') };
@@ -924,6 +925,58 @@ describe('Integration Tests', () => {
 			it('should checkForOtherAdminRoles once', async () => {
 				await service.deleteMany([1]);
 				expect(checkForOtherAdminRolesSpy).toBeCalledTimes(1);
+			});
+
+			it('removes a virtual role membership without suspending the shared user', async () => {
+				tracker.on
+					.any(/select id from directus_namespaces where id = \? for update/)
+					.responseOnce({ rows: [{ id: 'tracking' }] });
+
+				tracker.on
+					.select(/select "id", "admin_access" from "directus_roles"/)
+					.responseOnce([{ id: 1, admin_access: false }]);
+
+				tracker.on.select(/count\(\*\) as "count" from "directus_users"/).responseOnce({ count: 0 });
+				tracker.on.select(/count\(\*\) as "count" from "directus_user_namespaces"/).responseOnce({ count: 0 });
+				tracker.on.delete('directus_user_namespaces').responseOnce(1);
+
+				await runWithNamespace({ id: 'tracking', schema: 'public', kind: 'virtual' }, () => service.deleteMany([1]));
+
+				expect(checkForOtherAdminRolesSpy).not.toBeCalled();
+				expect(tracker.history.delete.some((query) => query.sql.includes('"directus_user_namespaces"'))).toBe(true);
+				expect(tracker.history.update.some((query) => query.sql.includes('"directus_users"'))).toBe(false);
+			});
+
+			it('refuses to delete a role outside the active virtual namespace', async () => {
+				tracker.on
+					.any(/select id from directus_namespaces where id = \? for update/)
+					.responseOnce({ rows: [{ id: 'tracking' }] });
+
+				tracker.on.select(/select "id", "admin_access" from "directus_roles"/).responseOnce([]);
+
+				await expect(
+					runWithNamespace({ id: 'tracking', schema: 'public', kind: 'virtual' }, () => service.deleteMany([1]))
+				).rejects.toBeInstanceOf(ForbiddenException);
+
+				expect(tracker.history.delete).toHaveLength(0);
+			});
+
+			it('refuses to delete the last admin role of a virtual namespace', async () => {
+				tracker.on
+					.any(/select id from directus_namespaces where id = \? for update/)
+					.responseOnce({ rows: [{ id: 'tracking' }] });
+
+				tracker.on
+					.select(/select "id", "admin_access" from "directus_roles"/)
+					.responseOnce([{ id: 1, admin_access: true }]);
+
+				tracker.on.select(/count\(\*\) as "count" from "directus_roles"/).responseOnce({ count: 0 });
+
+				await expect(
+					runWithNamespace({ id: 'tracking', schema: 'public', kind: 'virtual' }, () => service.deleteMany([1]))
+				).rejects.toBeInstanceOf(UnprocessableEntityException);
+
+				expect(tracker.history.delete).toHaveLength(0);
 			});
 		});
 

@@ -14,6 +14,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 type NamespaceContext = {
 	id: string;
 	schema: string;
+	kind?: 'main' | 'virtual';
 };
 
 const namespaceStorage = new AsyncLocalStorage<NamespaceContext>();
@@ -26,6 +27,10 @@ export function getActiveNamespace(): string | undefined {
 /** The registry id of the active namespace, for `namespace` columns. */
 export function getActiveNamespaceId(): string | undefined {
 	return namespaceStorage.getStore()?.id;
+}
+
+export function getActiveNamespaceKind(): 'main' | 'virtual' | undefined {
+	return namespaceStorage.getStore()?.kind;
 }
 
 export function runWithNamespace<T>(context: NamespaceContext, callback: () => T): T {

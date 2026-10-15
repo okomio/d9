@@ -5,6 +5,8 @@ import { ItemsService } from './items.js';
 import { PermissionsService } from './permissions.js';
 import { PresetsService } from './presets.js';
 import { UsersService } from './users.js';
+import { getActiveNamespaceId, getActiveNamespaceKind } from '../virtual-namespace/context.js';
+import { MEMBERSHIP_TABLE } from '../virtual-namespace/membership.js';
 
 export class RolesService extends ItemsService {
 	constructor(options: AbstractServiceOptions) {
@@ -122,14 +124,80 @@ export class RolesService extends ItemsService {
 
 	override async deleteMany(keys: PrimaryKey[]): Promise<PrimaryKey[]> {
 		const opts: MutationOptions = {};
+		const virtualNamespaceId = getActiveNamespaceKind() === 'virtual' ? getActiveNamespaceId() : undefined;
 
-		try {
-			await this.checkForOtherAdminRoles(keys);
-		} catch (err: any) {
-			opts.preMutationException = err;
+		if (!virtualNamespaceId) {
+			try {
+				await this.checkForOtherAdminRoles(keys);
+			} catch (err: any) {
+				opts.preMutationException = err;
+			}
 		}
 
 		await this.knex.transaction(async (trx) => {
+			if (virtualNamespaceId) {
+				// Serialize role deletions within an area, then check the actual role
+				// ownership and remaining local admin access before any mutation.
+				await trx.raw('select id from directus_namespaces where id = ? for update', [virtualNamespaceId]);
+
+				const roles = await trx('directus_roles')
+					.select(['id', 'admin_access'])
+					.where({ namespace: virtualNamespaceId })
+					.whereIn('id', keys);
+
+				if (roles.length !== new Set(keys).size) throw new ForbiddenException();
+
+				if (roles.some((role) => role.admin_access === true || role.admin_access === 1)) {
+					const remainingRoles = await trx('directus_roles')
+						.where({ namespace: virtualNamespaceId, admin_access: true })
+						.whereNotIn('id', keys)
+						.count({ count: '*' })
+						.first();
+
+					if (Number(remainingRoles?.count ?? 0) === 0) {
+						throw new UnprocessableEntityException(`You can't delete the last admin role.`);
+					}
+
+					const affectedAdmins = await trx(`${MEMBERSHIP_TABLE} as m`)
+						.join('directus_roles as r', 'm.role_id', 'r.id')
+						.where('m.namespace_id', virtualNamespaceId)
+						.whereIn('m.role_id', keys)
+						.andWhere('r.admin_access', true)
+						.count({ count: '*' })
+						.first();
+
+					if (Number(affectedAdmins?.count ?? 0) > 0) {
+						const remainingAdmins = await trx(`${MEMBERSHIP_TABLE} as m`)
+							.join('directus_roles as r', 'm.role_id', 'r.id')
+							.where('m.namespace_id', virtualNamespaceId)
+							.whereNotIn('m.role_id', keys)
+							.andWhere('r.admin_access', true)
+							.count({ count: '*' })
+							.first();
+
+						if (Number(remainingAdmins?.count ?? 0) === 0) {
+							throw new UnprocessableEntityException('A namespace must keep at least one admin');
+						}
+					}
+				}
+
+				const foreignMembers = await trx(MEMBERSHIP_TABLE)
+					.whereIn('role_id', keys)
+					.whereNot('namespace_id', virtualNamespaceId)
+					.count({ count: '*' })
+					.first();
+
+				if (Number(foreignMembers?.count ?? 0) > 0) {
+					throw new UnprocessableEntityException('This role is assigned in another namespace');
+				}
+
+				const sharedUsers = await trx('directus_users').whereIn('role', keys).count({ count: '*' }).first();
+
+				if (Number(sharedUsers?.count ?? 0) > 0) {
+					throw new UnprocessableEntityException('This role is assigned as a shared user role');
+				}
+			}
+
 			const itemsService = new ItemsService('directus_roles', {
 				knex: trx,
 				accountability: this.accountability,
@@ -170,16 +238,22 @@ export class RolesService extends ItemsService {
 				{ ...opts, bypassLimits: true }
 			);
 
-			await usersService.updateByQuery(
-				{
-					filter: { role: { _in: keys } },
-				},
-				{
-					status: 'suspended',
-					role: null,
-				},
-				{ ...opts, bypassLimits: true }
-			);
+			if (virtualNamespaceId) {
+				// A local role belongs to membership rows. Never mutate the shared
+				// user account or its main role when removing it.
+				await trx(MEMBERSHIP_TABLE).where({ namespace_id: virtualNamespaceId }).whereIn('role_id', keys).delete();
+			} else {
+				await usersService.updateByQuery(
+					{
+						filter: { role: { _in: keys } },
+					},
+					{
+						status: 'suspended',
+						role: null,
+					},
+					{ ...opts, bypassLimits: true }
+				);
+			}
 
 			await itemsService.deleteMany(keys, opts);
 		});

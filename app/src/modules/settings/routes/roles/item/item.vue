@@ -9,11 +9,7 @@
 			</v-button>
 		</template>
 		<template #actions>
-			<v-dialog
-				v-if="!isVirtualNamespace && [1, 2].includes(+primaryKey) === false"
-				v-model="confirmDelete"
-				@esc="confirmDelete = false"
-			>
+			<v-dialog v-if="[1, 2].includes(+primaryKey) === false" v-model="confirmDelete" @esc="confirmDelete = false">
 				<template #activator="{ on }">
 					<v-button
 						v-if="primaryKey !== lastAdminRoleId"
@@ -70,7 +66,7 @@
 			<settings-navigation />
 		</template>
 
-		<users-invite v-model="userInviteModalActive" :role="primaryKey" />
+		<users-invite v-if="!isVirtualNamespace" v-model="userInviteModalActive" :role="primaryKey" />
 
 		<div class="roles">
 			<v-notice v-if="adminEnabled" type="info">
@@ -81,13 +77,13 @@
 
 			<v-form
 				v-model="edits"
-				collection="directus_roles"
 				:fields="roleFields"
 				:primary-key="primaryKey"
 				:loading="loading"
 				:initial-values="item"
 				:batch-mode="isBatch"
 			/>
+			<namespace-role-members v-if="namespaceId" :namespace-id="namespaceId" :role-id="primaryKey" />
 		</div>
 
 		<template #sidebar>
@@ -128,10 +124,18 @@ import { getNamespaceRuntime } from '@/namespaces/live';
 import SettingsNavigation from '../../../components/navigation.vue';
 import PermissionsOverview from './components/permissions-overview.vue';
 import RoleInfoSidebarDetail from './components/role-info-sidebar-detail.vue';
+import NamespaceRoleMembers from './components/namespace-role-members.vue';
 
 export default defineComponent({
 	name: 'RolesItem',
-	components: { SettingsNavigation, RevisionsDrawerDetail, RoleInfoSidebarDetail, PermissionsOverview, UsersInvite },
+	components: {
+		SettingsNavigation,
+		RevisionsDrawerDetail,
+		RoleInfoSidebarDetail,
+		PermissionsOverview,
+		UsersInvite,
+		NamespaceRoleMembers,
+	},
 	props: {
 		primaryKey: {
 			type: String,
@@ -157,10 +161,17 @@ export default defineComponent({
 		const userInviteModalActive = ref(false);
 		const { primaryKey } = toRefs(props);
 		const isVirtualNamespace = getNamespaceRuntime()?.state.active?.namespace.kind === 'virtual';
+		const namespaceId = isVirtualNamespace ? getNamespaceRuntime()?.state.active?.namespaceId : null;
 		const { fields } = useCollection('directus_roles');
 
 		const roleFields = computed(() =>
-			isVirtualNamespace ? fields.value.filter((field) => !['users', 'namespace'].includes(field.field)) : fields.value
+			isVirtualNamespace
+				? fields.value
+						.filter((field) => field.field !== 'users')
+						.map((field) =>
+							field.field === 'namespace' ? { ...field, meta: { ...field.meta!, readonly: true } } : field
+						)
+				: fields.value
 		);
 
 		const revisionsDrawerDetailRef = ref<InstanceType<typeof RevisionsDrawerDetail> | null>(null);
@@ -236,6 +247,7 @@ export default defineComponent({
 			discardAndLeave,
 			canInviteUsers,
 			isVirtualNamespace,
+			namespaceId,
 			roleFields,
 			revisionsDrawerDetailRef,
 		};
