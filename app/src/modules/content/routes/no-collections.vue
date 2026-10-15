@@ -11,7 +11,7 @@
 		</template>
 
 		<v-info icon="box" :title="t('no_collections')" center>
-			<template v-if="isAdmin">
+			<template v-if="canCreateCollection">
 				{{ t('no_collections_copy_admin') }}
 			</template>
 
@@ -19,7 +19,7 @@
 				{{ t('no_collections_copy') }}
 			</template>
 
-			<template v-if="isAdmin" #append>
+			<template v-if="canCreateCollection" #append>
 				<v-button to="/settings/data-model/+">{{ t('create_collection') }}</v-button>
 			</template>
 		</v-info>
@@ -37,6 +37,7 @@ import { useI18n } from 'vue-i18n';
 import { defineComponent, computed } from 'vue';
 import ContentNavigation from '../components/navigation.vue';
 import { useUserStore } from '@/stores/user';
+import { router } from '@/router';
 
 export default defineComponent({
 	name: 'ContentOverview',
@@ -49,9 +50,9 @@ export default defineComponent({
 
 		const userStore = useUserStore();
 
-		const isAdmin = computed(() => userStore.currentUser?.role.admin_access === true);
+		const canCreateCollection = computed(() => userStore.isAdmin && router.hasRoute('settings'));
 
-		return { t, isAdmin };
+		return { t, canCreateCollection };
 	},
 });
 </script>

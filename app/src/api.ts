@@ -16,6 +16,15 @@ const api = axios.create({
 
 let queue = new PQueue({ concurrency: 5, intervalCap: 5, interval: 500, carryoverConcurrencyCount: true });
 
+/** Shared configuration and namespace operations remain available during a switch.
+ * User reads and asset requests still carry a context ticket so stale responses are discarded.
+ */
+const CONTROL_PLANE_PATHS = ['/auth', '/server', '/namespaces'];
+
+function isControlPlanePath(url?: string): boolean {
+	return !!url && CONTROL_PLANE_PATHS.some((prefix) => url === prefix || url.startsWith(`${prefix}/`));
+}
+
 interface RequestConfig extends InternalAxiosRequestConfig {
 	id: string;
 	namespaceTicket?: ExternalOperationTicket;
@@ -41,7 +50,7 @@ export const onRequest = (config: InternalAxiosRequestConfig): Promise<RequestCo
 
 	const runtime = getNamespaceRuntime();
 	const method = (config.method ?? 'get').toLowerCase();
-	const control = config.url?.startsWith('/auth/') || config.url?.startsWith('/namespaces');
+	const control = isControlPlanePath(config.url);
 
 	if (runtime?.state.active && !control) {
 		const kind =
@@ -122,7 +131,8 @@ export const onError = async (error: RequestError): Promise<RequestError> => {
 	if (id) requestsStore.endRequest(id);
 	if (ticket?.kind === 'write') window.setTimeout(() => ticket.finish(error), 0);
 	else ticket?.finish(error);
-	if (error instanceof NamespaceError || (ticket && !ticket.current()))
+	if (error instanceof NamespaceError) return Promise.reject(error);
+	if (ticket && (ticket.signal.aborted || !ticket.current()))
 		return Promise.reject(new NamespaceError('cancelled', 'Stale namespace request'));
 
 	// If a request fails with the unauthorized error, it either means that your user doesn't have

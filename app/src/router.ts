@@ -21,6 +21,7 @@ import {
 	destinationAfterLogin,
 } from '@/namespaces/url';
 import NamespaceStaticRoute from '@/namespaces/static-route.vue';
+import { NamespaceError } from '@/namespaces/adapter';
 import { getRootPath } from '@/utils/get-root-path';
 import { createRouter, createWebHistory, NavigationGuard, NavigationHookAfter, RouteRecordRaw } from 'vue-router';
 
@@ -199,7 +200,7 @@ export const onBeforeEach: NavigationGuard = async (to) => {
 		try {
 			await serverStore.hydrate();
 		} catch (error: any) {
-			appStore.error = error;
+			if (!(error instanceof NamespaceError && error.kind === 'cancelled')) appStore.error = error;
 		}
 	}
 

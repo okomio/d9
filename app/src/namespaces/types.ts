@@ -10,6 +10,8 @@ export interface NamespaceIdentity {
 export interface LocalRole {
 	id: string;
 	name: string;
+	adminAccess?: boolean;
+	appAccess?: boolean;
 }
 export interface EffectiveLocalAccess {
 	localRole: LocalRole | null;

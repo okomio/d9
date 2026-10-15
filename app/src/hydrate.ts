@@ -15,6 +15,7 @@ import { useSettingsStore } from '@/stores/settings';
 import { useUserStore } from '@/stores/user';
 import { useNotificationsStore } from '@/stores/notifications';
 import { useTranslationStrings } from '@/composables/use-translation-strings';
+import { NamespaceError } from '@/namespaces/adapter';
 import { onDehydrateExtensions, onHydrateExtensions } from './extensions';
 
 type GenericStore = {
@@ -68,21 +69,22 @@ export async function hydrate(options: { strict?: boolean } = {}): Promise<void>
 		 * else.
 		 */
 		await userStore.hydrate();
+		const active = options.strict ? (await import('@/namespaces/live')).getNamespaceRuntime()?.state.active : null;
 
 		if (options.strict && userStore.currentUser && !('share' in userStore.currentUser)) {
-			const active = (await import('@/namespaces/live')).getNamespaceRuntime()?.state.active;
-
 			if (active?.namespace.kind === 'virtual') {
+				// /users/me reports the shared main role. A child has a separate local role,
+				// which is absent for an inherited Global Admin.
 				const role = active.access.localRole;
 
 				userStore.currentUser.role = role
 					? ({
 							id: role.id,
 							name: role.name,
-							admin_access: active.access.isNamespaceAdmin,
-							app_access: active.access.canUseApp,
+							admin_access: role.adminAccess ?? false,
+							app_access: role.appAccess ?? false,
 					  } as typeof userStore.currentUser.role)
-					: (null as unknown as typeof userStore.currentUser.role);
+					: null;
 			}
 		}
 
@@ -91,11 +93,7 @@ export async function hydrate(options: { strict?: boolean } = {}): Promise<void>
 		if (userStore.currentUser && 'language' in userStore.currentUser && userStore.currentUser.language)
 			lang = userStore.currentUser.language;
 
-		if (
-			userStore.currentUser?.role ||
-			(options.strict &&
-				(await import('@/namespaces/live')).getNamespaceRuntime()?.state.active?.platform.isGlobalAdmin)
-		) {
+		if (userStore.currentUser?.role || (active?.platform.isGlobalAdmin && active.access.canUseApp)) {
 			await Promise.all([permissionsStore.hydrate(), fieldsStore.hydrate({ skipTranslation: true })]);
 
 			const hydratedStores = ['userStore', 'permissionsStore', 'fieldsStore'];
@@ -121,6 +119,11 @@ export async function hydrate(options: { strict?: boolean } = {}): Promise<void>
 
 		appStore.basemap = getBasemapSources()[0].name;
 	} catch (error: any) {
+		if (error instanceof NamespaceError && error.kind === 'cancelled') {
+			if (options.strict) throw error;
+			return;
+		}
+
 		appStore.error = error;
 		if (options.strict) throw error;
 	} finally {

@@ -44,9 +44,16 @@ function choice(row: WireNamespace): AuthorizedNamespaceChoice {
 	return {
 		namespace: { id: row.id, name: row.name, kind: row.kind, readiness: row.readiness },
 		access: {
-			localRole: row.local_role ? { id: row.local_role.id, name: row.local_role.name } : null,
+			localRole: row.local_role
+				? {
+						id: row.local_role.id,
+						name: row.local_role.name,
+						adminAccess: row.local_role.admin_access,
+						appAccess: row.local_role.app_access,
+				  }
+				: null,
 			source: row.inherited_admin && !row.local_role ? 'inherited' : 'membership',
-			// Use the server's effective flag as delivered. The inherited-admin mismatch is a backend gate.
+			// The server reports effective app access, including inherited Global Admin authority.
 			canUseApp: row.can_use_app,
 			isNamespaceAdmin: admin,
 			canManageMembers: admin,

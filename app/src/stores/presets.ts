@@ -142,7 +142,7 @@ export const usePresetsStore = defineStore({
 			// Hydrate is only called for logged in users, therefore, currentUser exists
 			const { id, role } = userStore.currentUser;
 
-			const values = await Promise.all([
+			const reads = [
 				// All user saved bookmarks and presets
 				api.get(`/presets`, {
 					params: {
@@ -150,23 +150,33 @@ export const usePresetsStore = defineStore({
 						limit: -1,
 					},
 				}),
-				// All role saved bookmarks and presets
-				api.get(`/presets`, {
-					params: {
-						'filter[role][_eq]': role.id,
-						'filter[user][_null]': true,
-						limit: -1,
-					},
-				}),
-				// All global saved bookmarks and presets
+			];
+
+			// An inherited Global Admin has no child role. The shared main role ID
+			// must never be used to select a child's role presets.
+			if (role?.id) {
+				reads.push(
+					api.get(`/presets`, {
+						params: {
+							'filter[role][_eq]': role.id,
+							'filter[user][_null]': true,
+							limit: -1,
+						},
+					})
+				);
+			}
+
+			reads.push(
 				api.get(`/presets`, {
 					params: {
 						'filter[role][_null]': true,
 						'filter[user][_null]': true,
 						limit: -1,
 					},
-				}),
-			]);
+				})
+			);
+
+			const values = await Promise.all(reads);
 
 			const presets = values.map((response) => response.data.data).flat();
 
@@ -229,9 +239,10 @@ export const usePresetsStore = defineStore({
 		getPresetForCollection(collection: string) {
 			const userStore = useUserStore();
 
-			if (userStore.currentUser === null) return null;
+			if (!userStore.currentUser || 'share' in userStore.currentUser) return null;
 
 			const { id: userID, role: userRole } = userStore.currentUser;
+			const roleId = userRole?.id;
 
 			const defaultPresetWithCollection = {
 				...defaultPreset,
@@ -240,8 +251,8 @@ export const usePresetsStore = defineStore({
 			};
 
 			const availablePresets = this.collectionPresets.filter((preset) => {
-				const userMatches = preset.user === userID || preset.user === null;
-				const roleMatches = preset.role === userRole.id || preset.role === null;
+				const userMatches = preset.user === userID;
+				const roleMatches = preset.user === null && (preset.role === null || (!!roleId && preset.role === roleId));
 				const collectionMatches = preset.collection === collection;
 
 				// Filter out all bookmarks
@@ -259,7 +270,7 @@ export const usePresetsStore = defineStore({
 			const userPreset = availablePresets.find((preset) => preset.user === userID);
 			if (userPreset) return userPreset;
 
-			const rolePreset = availablePresets.find((preset) => preset.role === userRole.id);
+			const rolePreset = roleId ? availablePresets.find((preset) => preset.role === roleId) : null;
 			if (rolePreset) return rolePreset;
 
 			// If the other two already came up empty, we can assume there's only one preset. That
@@ -281,7 +292,7 @@ export const usePresetsStore = defineStore({
 		 */
 		async savePreset(preset: Partial<Preset>) {
 			const userStore = useUserStore();
-			if (userStore.currentUser === null) return null;
+			if (!userStore.currentUser || 'share' in userStore.currentUser) return null;
 			const { id: userID } = userStore.currentUser;
 
 			// Clone the preset to make sure the future deletes don't affect the original object

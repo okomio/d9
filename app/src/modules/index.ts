@@ -2,7 +2,7 @@ import { router } from '@/router';
 import { usePermissionsStore } from '@/stores/permissions';
 import { useUserStore } from '@/stores/user';
 import RouterPass from '@/utils/router-passthrough';
-import { ModuleConfig } from '@wbce-d9/types';
+import { ModuleConfig, User } from '@wbce-d9/types';
 import { ShallowRef, shallowRef } from 'vue';
 import { sortBy } from 'lodash';
 import { getNamespaceRuntime } from '@/namespaces/live';
@@ -36,7 +36,9 @@ export function registerModules(modules: ModuleConfig[]): {
 						return null;
 					if (!module.preRegisterCheck) return module;
 
-					const allowed = await module.preRegisterCheck(currentUser, permissionsStore.permissions);
+					// The extension API still declares a non-null role. Native module guards
+					// handle inherited admins through effective access, with no child role ID.
+					const allowed = await module.preRegisterCheck(currentUser as User, permissionsStore.permissions);
 
 					if (allowed) return module;
 

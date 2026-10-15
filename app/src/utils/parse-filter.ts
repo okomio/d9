@@ -9,8 +9,8 @@ export function parseFilter(filter: Filter | null): Filter {
 	if (!userStore.currentUser) return filter ?? {};
 
 	const accountability: Accountability = {
-		role: userStore.currentUser.role.id,
-		user: userStore.currentUser.id,
+		role: userStore.currentUser.role?.id ?? null,
+		user: 'id' in userStore.currentUser ? userStore.currentUser.id : null,
 	};
 
 	return parseFilterShared(filter, accountability) ?? {};

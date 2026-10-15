@@ -101,7 +101,10 @@ export const useServerStore = defineStore('serverStore', () => {
 
 		// set language as default locale before login
 		// or reset language for admin when they update it without having their own language set
-		if (!currentUser || (options?.isLanguageUpdated === true && !currentUser?.language)) {
+		if (
+			!currentUser ||
+			(options?.isLanguageUpdated === true && (!('language' in currentUser) || !currentUser.language))
+		) {
 			await setLanguage(unref(info)?.project?.default_language ?? 'en-US');
 		}
 

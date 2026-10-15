@@ -15,10 +15,13 @@ type ShareUser = {
 	};
 };
 
+/** In a virtual namespace, inherited Global Admin has no local role. */
+export type AppUser = Omit<User, 'role'> & { role: User['role'] | null };
+
 export const useUserStore = defineStore({
 	id: 'userStore',
 	state: () => ({
-		currentUser: null as User | ShareUser | null,
+		currentUser: null as AppUser | ShareUser | null,
 		loading: false,
 		error: null,
 	}),
@@ -30,7 +33,7 @@ export const useUserStore = defineStore({
 		isAdmin(): boolean {
 			const active = getNamespaceRuntime()?.state.active;
 			if (active) return active.access.isNamespaceAdmin;
-			return this.currentUser?.role.admin_access === true || false;
+			return this.currentUser?.role?.admin_access === true || false;
 		},
 	},
 	actions: {
@@ -70,8 +73,14 @@ export const useUserStore = defineStore({
 		async hydrateAdditionalFields(fields: string[]) {
 			try {
 				const { data } = await api.get(`/users/me`, { params: { fields } });
+				const incoming = { ...data.data };
 
-				this.currentUser = merge({}, this.currentUser, data.data);
+				if (getNamespaceRuntime()?.state.active?.namespace.kind === 'virtual') {
+					// /users/me carries the shared role. Never merge it over a child role (or null).
+					delete incoming.role;
+				}
+
+				this.currentUser = merge({}, this.currentUser, incoming);
 			} catch (error: any) {
 				// Do nothing
 			}
