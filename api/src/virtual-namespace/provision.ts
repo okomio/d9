@@ -90,7 +90,7 @@ export async function listAreaCollections(database: Knex, area: string): Promise
  *
  * Foreign keys are deliberately not reproduced (see the module note below).
  */
-async function copyTable(database: Knex, schema: string, table: string): Promise<void> {
+export async function copyTable(database: Knex, schema: string, table: string): Promise<void> {
 	const defaults = await database
 		.select({ column: 'column_name', default: 'column_default' })
 		.from('information_schema.columns')
