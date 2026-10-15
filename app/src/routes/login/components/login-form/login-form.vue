@@ -26,6 +26,8 @@ import { useRouter } from 'vue-router';
 import { login } from '@/auth';
 import { RequestError } from '@/api';
 import { translateAPIError } from '@/lang';
+import { destinationAfterLogin } from '@/namespaces/url';
+import { namespaceFrontendEnabled } from '@/namespaces/enabled';
 import { useUserStore } from '@/stores/user';
 
 type Credentials = {
@@ -112,10 +114,11 @@ export default defineComponent({
 
 				const redirectQuery = router.currentRoute.value.query.redirect as string;
 
-				// Stores are hydrated after login
-				const lastPage = userStore.currentUser?.last_page;
-
-				router.push(redirectQuery || lastPage || '/content');
+				router.push(
+					destinationAfterLogin(redirectQuery) ||
+						(!namespaceFrontendEnabled ? userStore.currentUser?.last_page : null) ||
+						'/content'
+				);
 			} catch (err: any) {
 				if (err.response?.data?.errors?.[0]?.extensions?.code === 'INVALID_OTP' && requiresTFA.value === false) {
 					requiresTFA.value = true;

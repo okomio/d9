@@ -15,6 +15,9 @@ import ItemRoute from './item.vue';
 import { useCollectionsStore } from '@/stores/collections';
 import { useRoute } from 'vue-router';
 import { useLocalStorage } from '@/composables/use-local-storage';
+import { getNamespaceRuntime } from '@/namespaces/live';
+import { collectionKey } from '@/namespaces/url';
+import { useUserStore } from '@/stores/user';
 
 export default defineComponent({
 	components: {
@@ -38,7 +41,13 @@ export default defineComponent({
 	setup(props) {
 		const route = useRoute();
 
-		const { data } = useLocalStorage('last-accessed-collection');
+		const active = getNamespaceRuntime()?.state.active;
+		const currentUser = useUserStore().currentUser;
+		const userId = currentUser && 'id' in currentUser ? currentUser.id : null;
+
+		const { data } = useLocalStorage(
+			active && userId ? collectionKey(userId, active.namespaceId) : 'last-accessed-collection'
+		);
 
 		const collectionsStore = useCollectionsStore();
 

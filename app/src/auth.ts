@@ -5,6 +5,7 @@ import { useAppStore } from '@/stores/app';
 import { RouteLocationRaw } from 'vue-router';
 import { idleTracker } from './idle';
 import { DEFAULT_AUTH_PROVIDER } from '@/constants';
+import { namespaceFrontendEnabled } from '@/namespaces/enabled';
 
 type LoginCredentials = {
 	identifier?: string;
@@ -51,13 +52,30 @@ export async function login({ credentials, provider, share }: LoginParams): Prom
 	appStore.accessTokenExpiry = Date.now() + response.data.data.expires;
 	appStore.authenticated = true;
 
-	await hydrate();
+	if (share || !namespaceFrontendEnabled) await hydrate();
 }
 
 let refreshTimeout: any;
 let idle = false;
 let isRefreshing = false;
 let firstRefresh = true;
+
+/** The coordinator installs a scoped token without ending the shared cookie session. */
+export function installNamespaceToken(accessToken: string, expiresInMs: number): void {
+	clearTimeout(refreshTimeout);
+	api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+	const appStore = useAppStore();
+	appStore.accessTokenExpiry = Date.now() + expiresInMs;
+	appStore.authenticated = true;
+}
+
+export function clearNamespaceToken(): void {
+	clearTimeout(refreshTimeout);
+	delete api.defaults.headers.common['Authorization'];
+	const appStore = useAppStore();
+	appStore.authenticated = false;
+	appStore.accessTokenExpiry = 0;
+}
 
 // Prevent the auto-refresh when the app isn't in use
 idleTracker.on('idle', () => {
@@ -85,11 +103,18 @@ idleTracker.on('show', () => {
 	}
 });
 
-export async function refresh({ navigate }: LogoutOptions = { navigate: true }): Promise<string | undefined> {
+export async function refresh(
+	{ navigate, namespace, bootstrapRetry }: LogoutOptions & { namespace?: string; bootstrapRetry?: boolean } = {
+		navigate: true,
+	}
+): Promise<string | undefined> {
+	const { getNamespaceRuntime } = await import('@/namespaces/live');
+	const runtime = getNamespaceRuntime();
+	if (runtime?.state.active) return runtime.auth.refresh(runtime.state.active);
 	// Allow refresh during initial page load
 	if (firstRefresh) firstRefresh = false;
 	// Skip if not logged in
-	else if (!api.defaults.headers.common['Authorization']) return;
+	else if (!api.defaults.headers.common['Authorization'] && !bootstrapRetry) return;
 
 	// Prevent concurrent refreshes
 	if (isRefreshing) return;
@@ -107,13 +132,17 @@ export async function refresh({ navigate }: LogoutOptions = { navigate: true }):
 	isRefreshing = true;
 
 	try {
-		const response = await api.post<any>('/auth/refresh', undefined, {
-			transformRequest(data, headers) {
-				// Remove Authorization header from request
-				headers.set('Authorization');
-				return data;
-			},
-		});
+		const response = await api.post<any>(
+			'/auth/refresh',
+			{ mode: 'cookie', ...(namespace ? { namespace } : {}) },
+			{
+				transformRequest(data, headers) {
+					// Remove Authorization header from request
+					headers.set('Authorization');
+					return data;
+				},
+			}
+		);
 
 		const accessToken = response.data.data.access_token;
 
@@ -135,7 +164,10 @@ export async function refresh({ navigate }: LogoutOptions = { navigate: true }):
 
 		return accessToken;
 	} catch (error: any) {
-		await logout({ navigate, reason: LogoutReason.SESSION_EXPIRED });
+		const code = error.response?.data?.errors?.[0]?.extensions?.code;
+		if (code === 'INVALID_CREDENTIALS' || code === 'INVALID_TOKEN')
+			await logout({ navigate, reason: LogoutReason.SESSION_EXPIRED });
+		else throw error;
 	} finally {
 		isRefreshing = false;
 	}
@@ -165,6 +197,9 @@ export async function logout(optionsRaw: LogoutOptions = {}): Promise<void> {
 	delete api.defaults.headers.common['Authorization'];
 
 	clearTimeout(refreshTimeout);
+	const { getNamespaceRuntime } = await import('@/namespaces/live');
+	const namespaceRuntime = getNamespaceRuntime();
+	await namespaceRuntime?.logout();
 
 	const options = { ...defaultOptions, ...optionsRaw };
 
@@ -179,7 +214,7 @@ export async function logout(optionsRaw: LogoutOptions = {}): Promise<void> {
 
 	appStore.authenticated = false;
 
-	await dehydrate();
+	if (!namespaceRuntime) await dehydrate();
 
 	if (options.navigate === true) {
 		const location: RouteLocationRaw = {

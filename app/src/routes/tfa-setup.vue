@@ -48,6 +48,8 @@ import { useAppStore } from '@/stores/app';
 import { useUserStore } from '@/stores/user';
 import { router } from '@/router';
 import { User } from '@wbce-d9/types';
+import { getNamespaceRuntime } from '@/namespaces/live';
+import { destinationAfterLogin, withNamespace } from '@/namespaces/url';
 
 export default defineComponent({
 	setup() {
@@ -97,7 +99,13 @@ export default defineComponent({
 
 			if (error.value === null) {
 				const redirectQuery = router.currentRoute.value.query.redirect as string;
-				router.push(redirectQuery || (userStore.currentUser as User)?.last_page || '/login');
+				const active = getNamespaceRuntime()?.state.active;
+
+				const fallback = active
+					? withNamespace('/namespace', active.namespaceId)
+					: (userStore.currentUser as User)?.last_page || '/login';
+
+				router.push(destinationAfterLogin(redirectQuery) || fallback);
 			} else {
 				(inputOTP.value.$el as HTMLElement).querySelector('input')!.focus();
 			}

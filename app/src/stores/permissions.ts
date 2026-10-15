@@ -15,6 +15,11 @@ export const usePermissionsStore = defineStore({
 		async hydrate() {
 			const userStore = useUserStore();
 
+			if (!userStore.currentUser?.role) {
+				this.permissions = [];
+				return;
+			}
+
 			const response = await api.get('/permissions', {
 				params: { limit: -1, filter: { role: { _eq: userStore.currentUser!.role.id } } },
 			});
@@ -65,18 +70,18 @@ export const usePermissionsStore = defineStore({
 		},
 		getPermissionsForUser(collection: string, action: Permission['action']) {
 			const userStore = useUserStore();
+			const roleId = userStore.currentUser?.role?.id;
+			if (!roleId) return null;
 			return (
 				this.permissions.find(
 					(permission) =>
-						permission.action === action &&
-						permission.collection === collection &&
-						permission.role === userStore.currentUser?.role?.id
+						permission.action === action && permission.collection === collection && permission.role === roleId
 				) || null
 			);
 		},
 		hasPermission(collection: string, action: Permission['action']) {
 			const userStore = useUserStore();
-			if (userStore.currentUser?.role?.admin_access === true) return true;
+			if (userStore.isAdmin) return true;
 			return !!this.getPermissionsForUser(collection, action);
 		},
 	},

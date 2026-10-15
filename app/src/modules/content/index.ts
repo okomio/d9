@@ -12,6 +12,9 @@ import { orderBy, isNil } from 'lodash';
 import { useNavigation } from './composables/use-navigation';
 import { useLocalStorage } from '@/composables/use-local-storage';
 import { ref } from 'vue';
+import { getNamespaceRuntime } from '@/namespaces/live';
+import { collectionKey } from '@/namespaces/url';
+import { useUserStore } from '@/stores/user';
 
 const checkForSystem: NavigationGuard = (to, from) => {
 	if (!to.params?.collection) return;
@@ -98,7 +101,13 @@ export default defineModule({
 					['meta.sort', 'collection']
 				);
 
-				const { data } = useLocalStorage('last-accessed-collection');
+				const active = getNamespaceRuntime()?.state.active;
+				const currentUser = useUserStore().currentUser;
+				const userId = currentUser && 'id' in currentUser ? currentUser.id : null;
+
+				const { data } = useLocalStorage(
+					active && userId ? collectionKey(userId, active.namespaceId) : 'last-accessed-collection'
+				);
 
 				if (
 					data.value &&

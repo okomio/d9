@@ -35,6 +35,12 @@ let loading: Ref<boolean> | null = null;
 let translationStrings: Ref<TranslationString[] | null> | null = null;
 let error: Ref<any> | null = null;
 
+export function resetTranslationStrings() {
+	if (loading) loading.value = false;
+	if (error) error.value = null;
+	if (translationStrings) translationStrings.value = null;
+}
+
 export function useTranslationStrings(): UsableTranslationStrings {
 	if (loading === null) loading = ref(false);
 	if (error === null) error = ref(null);

@@ -55,7 +55,7 @@ export function usePermissions(collection: Ref<string>, item: Ref<any>, isNew: R
 	const fields = computed(() => {
 		let fields = cloneDeep(rawFields.value);
 
-		if (userStore.currentUser?.role?.admin_access === true) return fields;
+		if (userStore.isAdmin) return fields;
 
 		const permissions = permissionsStore.getPermissionsForUser(collection.value, isNew.value ? 'create' : 'update');
 
@@ -98,7 +98,7 @@ export function usePermissions(collection: Ref<string>, item: Ref<any>, isNew: R
 	});
 
 	const revisionsAllowed = computed(() => {
-		if (userStore.currentUser?.role?.admin_access === true) return true;
+		if (userStore.isAdmin) return true;
 		return !!permissionsStore.permissions.find(
 			(permission) => permission.collection === 'directus_revisions' && permission.action === 'read'
 		);

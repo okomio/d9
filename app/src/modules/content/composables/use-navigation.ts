@@ -4,6 +4,13 @@ import { Ref, ref, watch } from 'vue';
 let showHidden: Ref<boolean>;
 let activeGroups: Ref<string[]>;
 
+export function resetContentNavigation() {
+	if (showHidden) showHidden.value = false;
+	if (activeGroups) activeGroups.value = [];
+	showHidden = undefined as unknown as Ref<boolean>;
+	activeGroups = undefined as unknown as Ref<string[]>;
+}
+
 export function useNavigation(currentCollection: Ref<string | null>) {
 	const collectionsStore = useCollectionsStore();
 

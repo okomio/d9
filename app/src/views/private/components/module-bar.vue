@@ -37,6 +37,8 @@ import { translate } from '@/utils/translate-object-values';
 import { MODULE_BAR_DEFAULT } from '@/constants';
 import { omit } from 'lodash';
 import { useExtensions } from '@/extensions';
+import { namespaceFrontendEnabled } from '@/namespaces/enabled';
+import { getNamespaceRuntime } from '@/namespaces/live';
 
 export default defineComponent({
 	components: {
@@ -52,7 +54,9 @@ export default defineComponent({
 		const modules = computed(() => {
 			if (!settingsStore.settings) return [];
 
-			return (settingsStore.settings.module_bar ?? MODULE_BAR_DEFAULT)
+			const configured: Record<string, any>[] = (settingsStore.settings.module_bar ?? MODULE_BAR_DEFAULT)
+				// The shared directory has a separate platform entry when namespaces are enabled.
+				.filter((part) => !(namespaceFrontendEnabled && part.type === 'module' && part.id === 'users'))
 				.filter((modulePart) => {
 					if (modulePart.type === 'link') return true;
 					return modulePart.enabled && registeredModuleIDs.value.includes(modulePart.id);
@@ -78,6 +82,17 @@ export default defineComponent({
 						to: `/${module.id}`,
 					};
 				});
+
+			const platform = getNamespaceRuntime()?.state.session?.platform;
+			if (namespaceFrontendEnabled && platform?.isGlobalAdmin && platform.canManageSharedUsers)
+				configured.push({
+					id: 'global-admin',
+					name: 'Global Administration',
+					icon: 'admin_panel_settings',
+					to: '/global-admin/users',
+				});
+
+			return configured;
 		});
 
 		return { modules };

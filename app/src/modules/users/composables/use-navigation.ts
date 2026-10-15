@@ -5,6 +5,13 @@ import { ref, Ref } from 'vue';
 
 let roles: Ref<BasicRole[] | null> | null = null;
 let loading: Ref<boolean> | null = null;
+let navigationGeneration = 0;
+
+export function resetUserNavigation() {
+	navigationGeneration++;
+	if (roles) roles.value = null;
+	if (loading) loading.value = false;
+}
 
 export type BasicRole = Pick<Role, 'id' | 'name' | 'icon' | 'admin_access'>;
 
@@ -24,6 +31,7 @@ export default function useNavigation(): { roles: Ref<BasicRole[] | null>; loadi
 	return { roles, loading };
 
 	async function fetchRoles() {
+		const generation = navigationGeneration;
 		if (!loading || !roles) return;
 		if (!roles.value) loading.value = true;
 
@@ -35,11 +43,11 @@ export default function useNavigation(): { roles: Ref<BasicRole[] | null>; loadi
 				},
 			});
 
-			roles.value = rolesResponse.data.data;
+			if (generation === navigationGeneration) roles.value = rolesResponse.data.data;
 		} catch (error: any) {
-			unexpectedError(error);
+			if (generation === navigationGeneration) unexpectedError(error);
 		} finally {
-			loading.value = false;
+			if (generation === navigationGeneration) loading.value = false;
 		}
 	}
 }

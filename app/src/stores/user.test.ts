@@ -14,6 +14,7 @@ beforeEach(() => {
 
 import { User } from '@wbce-d9/types';
 import { pick } from 'lodash';
+import * as namespaceLive from '@/namespaces/live';
 import { useLatencyStore } from './latency';
 import { useUserStore } from './user';
 
@@ -102,6 +103,23 @@ describe('getters', () => {
 
 			expect(userStore.isAdmin).toEqual(true);
 		});
+
+		test('uses effective namespace admin access without a child role or with a lower child role', async () => {
+			vi.spyOn(namespaceLive, 'getNamespaceRuntime').mockReturnValue({
+				state: { active: { access: { isNamespaceAdmin: true } } },
+			} as ReturnType<typeof namespaceLive.getNamespaceRuntime>);
+
+			const userStore = useUserStore();
+			userStore.currentUser = { id: 'global-admin', role: null } as typeof userStore.currentUser;
+			expect(userStore.isAdmin).toBe(true);
+
+			userStore.currentUser = {
+				id: 'global-admin',
+				role: { id: 'lower-child-role', admin_access: false },
+			} as typeof userStore.currentUser;
+
+			expect(userStore.isAdmin).toBe(true);
+		});
 	});
 });
 
@@ -138,6 +156,20 @@ describe('actions', () => {
 			await userStore.hydrateAdditionalFields(['custom_user_field', 'role.custom_role_field']);
 
 			expect(userStore.currentUser).toEqual(mockAdminUser);
+		});
+
+		test('keeps the child role when additional shared user fields include the main role', async () => {
+			vi.spyOn(namespaceLive, 'getNamespaceRuntime').mockReturnValue({
+				state: { active: { namespace: { kind: 'virtual' } } },
+			} as ReturnType<typeof namespaceLive.getNamespaceRuntime>);
+
+			const userStore = useUserStore();
+			await userStore.hydrate();
+			userStore.currentUser!.role = null;
+			await userStore.hydrateAdditionalFields(['custom_user_field', 'role.custom_role_field']);
+
+			expect(userStore.currentUser?.role).toBeNull();
+			expect(userStore.currentUser).toHaveProperty('custom_user_field', 'test');
 		});
 	});
 

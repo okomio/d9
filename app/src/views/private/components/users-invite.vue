@@ -4,7 +4,7 @@
 		@update:model-value="$emit('update:modelValue', $event)"
 		@esc="$emit('update:modelValue', false)"
 	>
-		<v-card>
+		<v-card :class="{ 'platform-invite': platform }">
 			<v-card-title>{{ t('invite_users') }}</v-card-title>
 
 			<v-card-text>
@@ -13,10 +13,36 @@
 						<div class="type-label">{{ t('emails') }}</div>
 						<v-textarea v-model="emails" :nullable="false" placeholder="admin@example.com, user@example.com..." />
 					</div>
-					<div v-if="role === null" class="field">
+					<div v-if="!platform && role === null" class="field">
 						<div class="type-label">{{ t('role') }}</div>
 						<v-select v-model="roleSelected" :items="roles" />
 					</div>
+					<template v-if="platform">
+						<div v-for="(assignment, index) in assignments" :key="assignment.key" class="assignment">
+							<div class="field">
+								<div class="type-label">Virtual namespace</div>
+								<v-select
+									:model-value="assignment.namespaceId"
+									:items="namespaceItems"
+									@update:model-value="selectNamespace(assignment, $event)"
+								/>
+							</div>
+							<div class="field">
+								<div class="type-label">{{ t('role') }}</div>
+								<v-select
+									v-model="assignment.roleId"
+									:items="assignment.roles"
+									:disabled="!assignment.namespaceId || assignment.loading || assignment.roles.length === 0"
+								/>
+							</div>
+							<v-button v-if="assignments.length > 1" secondary icon :aria-label="`Remove namespace ${index + 1}`" @click="removeAssignment(index)">
+								<v-icon name="close" />
+							</v-button>
+							<div v-if="assignment.error" class="assignment-error">{{ assignment.error }}</div>
+						</div>
+						<v-button class="add-namespace" secondary @click="addAssignment">Add namespace</v-button>
+						<v-notice class="field" type="warning">Invitations with namespace access are not available yet.</v-notice>
+					</template>
 					<v-notice v-if="uniqueValidationErrors.length > 0" class="field" type="danger">
 						<div v-for="(err, i) in uniqueValidationErrors" :key="i">
 							<template v-if="err.extensions.invalid">
@@ -32,7 +58,7 @@
 
 			<v-card-actions>
 				<v-button secondary @click="$emit('update:modelValue', false)">{{ t('cancel') }}</v-button>
-				<v-button :disabled="emails === null || emails.length === 0" :loading="loading" @click="inviteUsers">
+				<v-button :disabled="platform || emails === null || emails.length === 0" :loading="loading" @click="inviteUsers">
 					{{ t('invite') }}
 				</v-button>
 			</v-card-actions>
@@ -42,10 +68,22 @@
 
 <script lang="ts">
 import { useI18n } from 'vue-i18n';
-import { defineComponent, ref, watch } from 'vue';
+import { computed, defineComponent, onBeforeUnmount, ref, watch } from 'vue';
 import api from '@/api';
+import { ensureNamespaceRuntime } from '@/namespaces/live';
 import { unexpectedError } from '@/utils/unexpected-error';
 import { APIError } from '@/types/error';
+
+type RoleOption = { text: string; value: string };
+type Assignment = {
+	key: number;
+	namespaceId: string | null;
+	roleId: string | null;
+	roles: RoleOption[];
+	loading: boolean;
+	error: string | null;
+	controller: AbortController | null;
+};
 
 export default defineComponent({
 	props: {
@@ -54,6 +92,18 @@ export default defineComponent({
 			default: false,
 		},
 		role: {
+			type: String,
+			default: null,
+		},
+		platform: {
+			type: Boolean,
+			default: false,
+		},
+		initialNamespaceId: {
+			type: String,
+			default: null,
+		},
+		initialRoleId: {
 			type: String,
 			default: null,
 		},
@@ -66,19 +116,116 @@ export default defineComponent({
 		const roles = ref<Record<string, any>[]>([]);
 		const roleSelected = ref<string | null>(props.role);
 		const loading = ref(false);
+		const runtime = props.platform ? ensureNamespaceRuntime() : null;
+		let nextKey = 0;
+		const assignments = ref<Assignment[]>([]);
+		const namespaceItems = computed(() =>
+			(runtime?.state.choices ?? [])
+				.filter((choice) => choice.namespace.kind === 'virtual' && choice.namespace.readiness === 'ready')
+				.map((choice) => ({ text: choice.namespace.name, value: choice.namespace.id }))
+		);
 
 		const uniqueValidationErrors = ref([]);
 
 		watch(
 			() => props.modelValue,
-			() => {
-				loadRoles();
+			(open) => {
+				if (!open) {
+					assignments.value.forEach((assignment) => assignment.controller?.abort());
+					return;
+				}
+				if (props.platform) {
+					assignments.value = [newAssignment()];
+					const initial = props.initialNamespaceId;
+					if (initial && namespaceItems.value.some((item) => item.value === initial))
+						void selectNamespace(assignments.value[0]!, initial);
+				} else {
+					void loadRoles();
+				}
 			}
 		);
 
-		return { t, emails, inviteUsers, roles, roleSelected, loading, uniqueValidationErrors };
+		onBeforeUnmount(() => assignments.value.forEach((assignment) => assignment.controller?.abort()));
+
+		return {
+			t,
+			emails,
+			inviteUsers,
+			roles,
+			roleSelected,
+			loading,
+			uniqueValidationErrors,
+			assignments,
+			namespaceItems,
+			addAssignment,
+			removeAssignment,
+			selectNamespace,
+		};
+
+		function newAssignment(): Assignment {
+			return {
+				key: ++nextKey,
+				namespaceId: null,
+				roleId: null,
+				roles: [],
+				loading: false,
+				error: null,
+				controller: null,
+			};
+		}
+
+		function addAssignment() {
+			assignments.value.push(newAssignment());
+		}
+
+		function removeAssignment(index: number) {
+			assignments.value[index]?.controller?.abort();
+			assignments.value.splice(index, 1);
+		}
+
+		async function selectNamespace(assignment: Assignment, namespaceId: string | null) {
+			assignment.controller?.abort();
+			assignment.namespaceId = null;
+			assignment.roleId = null;
+			assignment.roles = [];
+			assignment.error = null;
+			assignment.loading = false;
+			if (!namespaceId) return;
+			if (assignments.value.some((other) => other !== assignment && other.namespaceId === namespaceId)) {
+				assignment.error = 'This namespace is already selected.';
+				return;
+			}
+			assignment.namespaceId = namespaceId;
+			if (runtime?.state.active?.namespaceId !== namespaceId) {
+				assignment.error = 'Roles will be available when this namespace can be loaded.';
+				return;
+			}
+
+			const request = new AbortController();
+			assignment.controller = request;
+			assignment.loading = true;
+			try {
+				const response = await api.get<{ data: { id: string; name: string }[] }>('/roles', {
+					params: { fields: ['id', 'name'], sort: 'name', limit: -1 },
+					signal: request.signal,
+				});
+				if (request.signal.aborted || assignment.namespaceId !== namespaceId) return;
+				assignment.roles = response.data.data.map((role) => ({ text: role.name, value: role.id }));
+				if (
+					assignment === assignments.value[0] &&
+					namespaceId === props.initialNamespaceId &&
+					assignment.roles.some((role) => role.value === props.initialRoleId)
+				)
+					assignment.roleId = props.initialRoleId;
+			} catch {
+				if (!request.signal.aborted) assignment.error = 'Could not load roles from this namespace.';
+			} finally {
+				if (!request.signal.aborted) assignment.loading = false;
+			}
+		}
 
 		async function inviteUsers() {
+			if (props.platform) return;
 			loading.value = true;
 
 			try {
@@ -143,5 +290,41 @@ export default defineComponent({
 
 .v-card-title {
 	font-size: 20px;
+}
+
+.platform-invite .v-card-text {
+	max-height: calc(90vh - 144px);
+	overflow-y: auto;
+}
+
+.assignment,
+.add-namespace {
+	grid-column: start / full;
+}
+
+.assignment {
+	min-width: 0;
+
+	.field + .field {
+		margin-top: 20px;
+	}
+
+	& + .assignment {
+		padding-top: 20px;
+		border-top: 1px solid var(--border-subdued);
+	}
+
+	.v-button {
+		margin-top: 12px;
+	}
+}
+
+.assignment-error {
+	margin-top: 8px;
+	color: var(--danger);
+}
+
+.add-namespace {
+	justify-self: start;
 }
 </style>

@@ -3,6 +3,8 @@ import emitter, { Events } from '@/events';
 import { i18n } from '@/lang';
 import { notify } from '@/utils/notify';
 import { unexpectedError } from './unexpected-error';
+import { getNamespaceRuntime } from '@/namespaces/live';
+import { NamespaceError } from '@/namespaces/adapter';
 
 export async function uploadFile(
 	file: File,
@@ -14,6 +16,8 @@ export async function uploadFile(
 	}
 ): Promise<any> {
 	const progressHandler = options?.onProgressChange || (() => undefined);
+	const runtime = getNamespaceRuntime();
+	const source = runtime?.state.active && { ...runtime.state.active };
 	const formData = new FormData();
 
 	if (options?.preset) {
@@ -37,6 +41,8 @@ export async function uploadFile(
 			});
 		}
 
+		if (source && !runtime?.ledger.current(source)) throw new NamespaceError('cancelled', 'Stale upload result');
+
 		if (options?.notifications) {
 			notify({
 				title: i18n.global.t('upload_file_success'),
@@ -45,13 +51,14 @@ export async function uploadFile(
 
 		emitter.emit(Events.upload);
 
-		return response.data.data;
+		return response.data?.data ?? null;
 	} catch (err: any) {
-		unexpectedError(err);
+		if (!(err instanceof NamespaceError) || err.kind !== 'cancelled') unexpectedError(err);
 	}
 
-	function onUploadProgress(progressEvent: { loaded: number; total: number }) {
-		const percentCompleted = Math.floor((progressEvent.loaded * 100) / progressEvent.total);
+	function onUploadProgress(progressEvent: { loaded: number; total?: number }) {
+		if (source && !runtime?.ledger.current(source)) return;
+		const percentCompleted = Math.floor((progressEvent.loaded * 100) / (progressEvent.total || 1));
 		progressHandler(percentCompleted);
 	}
 }

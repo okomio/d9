@@ -16,8 +16,11 @@ import { useSettingsStore } from '@/stores/settings';
 import { useUserStore } from '@/stores/user';
 import { useFlowsStore } from '@/stores/flows';
 import { useExtensions } from '@/extensions';
+import { getNamespaceRuntime } from '@/namespaces/live';
 
 export function useSystem(): void {
+	provide('namespace-runtime', { getRuntime: getNamespaceRuntime });
+
 	provide(STORES_INJECT, {
 		useAppStore,
 		useCollectionsStore,

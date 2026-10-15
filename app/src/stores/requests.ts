@@ -12,6 +12,9 @@ export const useRequestsStore = defineStore({
 		},
 	},
 	actions: {
+		async dehydrate() {
+			this.$reset();
+		},
 		startRequest() {
 			const id = nanoid();
 			this.queue = [...this.queue, id];

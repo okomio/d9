@@ -21,6 +21,15 @@ export type Language = keyof typeof availableLanguages;
 
 export const loadedLanguages: Language[] = ['en-US'];
 
+const baseMessages = new Map<string, Record<string, unknown>>([['en-US', structuredClone(enUSBase)]]);
+
+export function recordBaseLocale(locale: string, messages: Record<string, unknown>) {
+	if (!baseMessages.has(locale)) baseMessages.set(locale, structuredClone(messages));
+}
+export function resetScopedLocaleMessages() {
+	for (const [locale, messages] of baseMessages) i18n.global.setLocaleMessage(locale, structuredClone(messages));
+}
+
 export function translateAPIError(error: RequestError | string): string {
 	const defaultMsg = i18n.global.t('unexpected_error');
 
