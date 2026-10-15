@@ -17,7 +17,7 @@
 
 <script lang="ts">
 import { useI18n } from 'vue-i18n';
-import { defineComponent, computed } from 'vue';
+import { defineComponent, computed, type PropType } from 'vue';
 import { useSync } from '@wbce-d9/composables';
 import { useExtensions } from '@/extensions';
 import { useExtension } from '@/composables/use-extension';
@@ -27,6 +27,10 @@ export default defineComponent({
 		modelValue: {
 			type: String,
 			default: 'tabular',
+		},
+		allowedLayouts: {
+			type: Array as PropType<string[]>,
+			default: null,
 		},
 	},
 	emits: ['update:modelValue'],
@@ -41,7 +45,11 @@ export default defineComponent({
 
 		const layout = useSync(props, 'modelValue', emit);
 
-		return { t, currentLayout, layouts, layout };
+		const availableLayouts = computed(() =>
+			props.allowedLayouts ? layouts.value.filter((item) => props.allowedLayouts?.includes(item.id)) : layouts.value
+		);
+
+		return { t, currentLayout, layouts: availableLayouts, layout };
 	},
 });
 </script>

@@ -3,7 +3,7 @@ import { getEndpoint, moveInArray } from '@wbce-d9/utils';
 import axios from 'axios';
 import { isEqual, throttle } from 'lodash-es';
 import type { ComputedRef, Ref, WritableComputedRef } from 'vue';
-import { computed, onScopeDispose, ref, unref, watch } from 'vue';
+import { computed, inject, onScopeDispose, ref, unref, watch } from 'vue';
 import { useCollection } from './use-collection.js';
 import { useApi } from './use-system.js';
 
@@ -35,12 +35,20 @@ export type ComputedQuery = {
 	page: Ref<Query['page']> | WritableComputedRef<Query['page']>;
 };
 
+/** A view may supply a collection-specific reader while retaining native layouts. */
+export type ItemsSource = (collection: Ref<string | null>, query: ComputedQuery) => UsableItems | null;
+export const itemsSourceKey = Symbol('items-source');
+
 // ** bypass_collections_calls: [issues-33] we allow directus_collections to be read as items for m2m collection visualization
 export function useItems(
 	collection: Ref<string | null>,
 	query: ComputedQuery,
 	bypass_collections_calls = false
 ): UsableItems {
+	const source = inject<ItemsSource | null>(itemsSourceKey, null);
+	const supplied = source?.(collection, query);
+	if (supplied) return supplied;
+
 	const api = useApi();
 	const { primaryKeyField } = useCollection(collection);
 

@@ -11,7 +11,7 @@ import { useCollection, useItems, useSync } from '@wbce-d9/composables';
 import { Field } from '@wbce-d9/types';
 import { defineLayout } from '@wbce-d9/utils';
 import { debounce } from 'lodash';
-import { computed, ref, toRefs, watch } from 'vue';
+import { computed, inject, ref, toRefs, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { getNamespaceRuntime } from '@/namespaces/live';
 import { withNamespace } from '@/namespaces/url';
@@ -32,6 +32,7 @@ export default defineLayout<LayoutOptions, LayoutQuery>({
 	},
 	headerShadow: false,
 	setup(props, { emit }) {
+		const memberView = inject('namespace-member-view', false);
 		const router = useRouter();
 
 		const fieldsStore = useFieldsStore();
@@ -42,7 +43,12 @@ export default defineLayout<LayoutOptions, LayoutQuery>({
 
 		const { collection, filter, filterUser, search } = toRefs(props);
 
-		const { info, primaryKeyField, fields: fieldsInCollection, sortField } = useCollection(collection);
+		const { info, primaryKeyField, fields: collectionFields, sortField } = useCollection(collection);
+		const memberFields = new Set(['id', 'first_name', 'last_name', 'email', 'status']);
+
+		const fieldsInCollection = computed(() =>
+			memberView ? collectionFields.value.filter((field) => memberFields.has(field.field)) : collectionFields.value
+		);
 
 		const { sort, limit, page, fields } = useItemOptions();
 
@@ -96,6 +102,7 @@ export default defineLayout<LayoutOptions, LayoutQuery>({
 		});
 
 		return {
+			memberView,
 			tableHeaders,
 			items,
 			loading,
@@ -293,7 +300,7 @@ export default defineLayout<LayoutOptions, LayoutQuery>({
 
 				const primaryKey = item[primaryKeyField.value.field];
 
-				if (props.selectMode || selection.value?.length > 0) {
+				if (memberView || props.selectMode || selection.value?.length > 0) {
 					if (selection.value?.includes(primaryKey) === false) {
 						selection.value = selection.value.concat(primaryKey);
 					} else {
