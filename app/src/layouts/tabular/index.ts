@@ -300,7 +300,11 @@ export default defineLayout<LayoutOptions, LayoutQuery>({
 						selection.value = selection.value.filter((item) => item !== primaryKey);
 					}
 				} else {
-					const path = `/content/${collection.value}/${encodeURIComponent(primaryKey)}`;
+					const path =
+						collection.value === 'directus_users' && router.currentRoute.value.path.startsWith('/global-admin/users')
+							? `/global-admin/users/${encodeURIComponent(primaryKey)}`
+							: `/content/${collection.value}/${encodeURIComponent(primaryKey)}`;
+
 					const namespace = getNamespaceRuntime()?.state.active?.namespaceId;
 					const next = router.resolve(namespace ? withNamespace(path, namespace) : path);
 

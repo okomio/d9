@@ -86,7 +86,7 @@
 
 				<template #append-outer>
 					<save-options
-						v-if="isSavable"
+						v-if="isSavable && !platform"
 						:disabled-options="createAllowed ? [] : ['save-and-add-new', 'save-as-copy']"
 						@save-and-stay="saveAndStay"
 						@save-and-add-new="saveAndAddNew"
@@ -98,7 +98,8 @@
 		</template>
 
 		<template #navigation>
-			<users-navigation :current-role="(item && item.role) || role" />
+			<global-navigation v-if="platform" />
+			<users-navigation v-else :current-role="(item && item.role) || role" />
 		</template>
 
 		<div class="user-item">
@@ -132,7 +133,7 @@
 							<v-icon name="place" small />
 							{{ item.location }}
 						</div>
-						<v-chip v-if="roleName" :class="item.status" small>{{ roleName }}</v-chip>
+						<v-chip v-if="roleName && !platform" :class="item.status" small>{{ roleName }}</v-chip>
 					</template>
 				</div>
 			</div>
@@ -205,11 +206,19 @@ import { useCollection } from '@wbce-d9/composables';
 import { Field } from '@wbce-d9/types';
 import { useRouter } from 'vue-router';
 import UsersNavigation from '../components/navigation.vue';
+import GlobalNavigation from '@/namespaces/global-admin/navigation.vue';
 import UserInfoSidebarDetail from '../components/user-info-sidebar-detail.vue';
 
 export default defineComponent({
 	name: 'UsersItem',
-	components: { UsersNavigation, RevisionsDrawerDetail, SaveOptions, CommentsSidebarDetail, UserInfoSidebarDetail },
+	components: {
+		UsersNavigation,
+		GlobalNavigation,
+		RevisionsDrawerDetail,
+		SaveOptions,
+		CommentsSidebarDetail,
+		UserInfoSidebarDetail,
+	},
 	props: {
 		primaryKey: {
 			type: String,
@@ -219,11 +228,13 @@ export default defineComponent({
 			type: String,
 			default: null,
 		},
+		platform: { type: Boolean, default: false },
 	},
 	setup(props) {
 		const { t, locale } = useI18n();
 
 		const router = useRouter();
+		const usersPath = props.platform ? '/global-admin/users' : '/users';
 
 		const form = ref<HTMLElement>();
 		const fieldsStore = useFieldsStore();
@@ -293,6 +304,9 @@ export default defineComponent({
 
 		const fieldsFiltered = computed(() => {
 			return fields.value.filter((field: Field) => {
+				// /roles is scoped to the active child; it cannot edit a shared main role here.
+				if (props.platform && field.field === 'role') return false;
+
 				// These fields should only be editable when creating new users or by administrators
 				if (!isNew.value && ['provider', 'external_identifier'].includes(field.field) && !userStore.isAdmin) {
 					field.meta.readonly = true;
@@ -370,14 +384,14 @@ export default defineComponent({
 				return;
 			}
 
-			router.push('/users');
+			router.push(usersPath);
 		}
 
 		function useBreadcrumb() {
 			const breadcrumb = computed(() => [
 				{
 					name: t('user_directory'),
-					to: `/users`,
+					to: usersPath,
 				},
 			]);
 
@@ -389,7 +403,7 @@ export default defineComponent({
 				const savedItem: Record<string, any> = await save();
 				await setLang(savedItem);
 				await refreshCurrentUser();
-				router.push(`/users`);
+				router.push(usersPath);
 			} catch {
 				// `save` will show unexpected error dialog
 			}
@@ -405,7 +419,7 @@ export default defineComponent({
 
 				if (props.primaryKey === '+') {
 					const newPrimaryKey = savedItem.id;
-					router.replace(`/users/${newPrimaryKey}`);
+					router.replace(`${usersPath}/${newPrimaryKey}`);
 				}
 			} catch {
 				// `save` will show unexpected error dialog
@@ -413,20 +427,24 @@ export default defineComponent({
 		}
 
 		async function saveAndAddNew() {
+			if (props.platform) return;
+
 			try {
 				const savedItem: Record<string, any> = await save();
 				await setLang(savedItem);
 				await refreshCurrentUser();
-				router.push(`/users/+`);
+				router.push(`${usersPath}/+`);
 			} catch {
 				// `save` will show unexpected error dialog
 			}
 		}
 
 		async function saveAsCopyAndNavigate() {
+			if (props.platform) return;
+
 			try {
 				const newPrimaryKey = await saveAsCopy();
-				if (newPrimaryKey) router.push(`/users/${newPrimaryKey}`);
+				if (newPrimaryKey) router.push(`${usersPath}/${newPrimaryKey}`);
 			} catch {
 				// `save` will show unexpected error dialog
 			}
@@ -436,7 +454,7 @@ export default defineComponent({
 			try {
 				await remove();
 				edits.value = {};
-				router.replace(`/users`);
+				router.replace(usersPath);
 			} catch {
 				// `remove` will show the unexpected error dialog
 			}
@@ -510,7 +528,7 @@ export default defineComponent({
 			await archive();
 
 			if (isArchived.value === true) {
-				router.push('/users');
+				router.push(usersPath);
 			} else {
 				confirmArchive.value = false;
 			}

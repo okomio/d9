@@ -21,7 +21,7 @@ import {
 	internalDestination,
 	destinationAfterLogin,
 } from '@/namespaces/url';
-import NamespaceStaticRoute from '@/namespaces/static-route.vue';
+import { canManagePlatformResource } from '@/namespaces/capabilities';
 import { getRootPath } from '@/utils/get-root-path';
 import { createRouter, createWebHistory, NavigationGuard, NavigationHookAfter, RouteRecordRaw } from 'vue-router';
 
@@ -90,30 +90,74 @@ export const defaultRoutes: RouteRecordRaw[] = [
 	{
 		name: 'namespace-loading',
 		path: '/namespace/loading',
-		component: NamespaceStaticRoute,
+		component: () => import('@/namespaces/static-route.vue'),
 		props: { mode: 'loading' },
 		meta: { track: false },
 	},
 	{
 		name: 'namespace-choose',
 		path: '/namespace/choose',
-		component: NamespaceStaticRoute,
+		component: () => import('@/namespaces/static-route.vue'),
 		props: { mode: 'choose' },
 		meta: { track: false },
 	},
 	{
 		name: 'namespace-recover',
 		path: '/namespace/recover',
-		component: NamespaceStaticRoute,
+		component: () => import('@/namespaces/static-route.vue'),
 		props: { mode: 'recover' },
 		meta: { track: false },
 	},
 	{
 		name: 'namespace-landing',
 		path: '/namespace',
-		component: NamespaceStaticRoute,
+		component: () => import('@/namespaces/static-route.vue'),
 		props: { mode: 'landing' },
 		meta: { track: false },
+	},
+	{
+		name: 'global-admin-home',
+		path: '/global-admin',
+		redirect: (to) => ({ path: '/global-admin/users', query: to.query }),
+		meta: { namespacePlatform: true, track: false },
+	},
+	{
+		name: 'global-admin-users',
+		path: '/global-admin/users',
+		component: () => import('@/modules/users/routes/collection.vue'),
+		props: { platform: true },
+		meta: { namespacePlatform: true, track: false },
+	},
+	{
+		name: 'global-admin-onboarding',
+		path: '/global-admin/users/new',
+		component: () => import('@/namespaces/global-admin/onboarding.vue'),
+		beforeEnter: (to) => {
+			if (to.query.mode !== 'invite') return true;
+			const query = { ...to.query };
+			delete query.mode;
+			return { path: '/global-admin/users', query: { ...query, invite: '1' } };
+		},
+		meta: { namespacePlatform: true, track: false },
+	},
+	{
+		name: 'global-admin-user',
+		path: '/global-admin/users/:primaryKey',
+		component: () => import('@/modules/users/routes/item.vue'),
+		props: (route) => ({ primaryKey: route.params.primaryKey, platform: true }),
+		meta: { namespacePlatform: true, track: false },
+	},
+	{
+		name: 'global-admin-namespaces',
+		path: '/global-admin/namespaces',
+		component: () => import('@/namespaces/global-admin/namespaces.vue'),
+		meta: { namespacePlatform: true, track: false },
+	},
+	{
+		name: 'global-admin-namespace-new',
+		path: '/global-admin/namespaces/new',
+		component: () => import('@/namespaces/global-admin/new-namespace.vue'),
+		meta: { namespacePlatform: true, track: false },
 	},
 ];
 
@@ -205,6 +249,7 @@ export const onBeforeEach: NavigationGuard = async (to) => {
 	}
 
 	if (!namespaceFrontendEnabled) {
+		if (to.meta.namespacePlatform) return '/content';
 		if (staticNamespaceRoute) return '/content';
 		if (to.meta.public === true) return;
 
@@ -228,6 +273,8 @@ export const onBeforeEach: NavigationGuard = async (to) => {
 
 		return;
 	}
+
+	if (to.name === 'global-admin-user' && to.params.primaryKey === '+') return '/global-admin/users/new';
 
 	if (to.meta?.public !== true) {
 		if (!appStore.authenticated) return loginRedirect(destination);
@@ -260,8 +307,24 @@ export const onBeforeEach: NavigationGuard = async (to) => {
 		}
 
 		const runtime = ensureNamespaceRuntime();
+		// Check a switch permit too: it must not bypass platform authority.
+
+		const platformResource =
+			to.name === 'global-admin-namespaces' || to.name === 'global-admin-namespace-new' ? 'namespaces' : 'users';
+
+		if (
+			to.meta.namespacePlatform &&
+			runtime.state.session &&
+			!canManagePlatformResource(runtime.state.session.platform, platformResource)
+		)
+			return '/namespace/choose';
+		if (
+			to.meta.namespacePlatform &&
+			runtime.state.active &&
+			!canManagePlatformResource(runtime.state.active.platform, platformResource)
+		)
+			return '/namespace/choose';
 		if (getNamespaceNavigation()?.consumePermit(destination)) return;
-		if (to.meta.namespacePlatform && !runtime.state.session?.platform.isGlobalAdmin) return '/namespace/choose';
 
 		if (!runtime.state.active) {
 			window.setTimeout(() => {
@@ -286,6 +349,7 @@ export const onBeforeEach: NavigationGuard = async (to) => {
 		if (requested && requested !== runtime.state.active.namespaceId) {
 			if (!allowedDestination(runtime.state.choices, requested, runtime.state.active.platform.isGlobalAdmin))
 				return '/namespace/choose';
+
 			const result = await runtime.coordinator.requestSwitch({
 				namespaceId: requested,
 				source: 'history',

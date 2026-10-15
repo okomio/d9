@@ -61,6 +61,15 @@ describe('checked hydration and resource capabilities', () => {
 		expect(canManagePlatformResource(context.platform, 'namespaces')).toBe(false);
 	});
 
+	it('inherited Global Admin authority permits platform views without a local role', async () => {
+		const grant = await createMockNamespaceAdapter('global-admin').mintTargetToken('tracking');
+		const context = contextFromGrant(grant, createNamespaceState());
+
+		expect(context.access.localRole).toBeNull();
+		expect(canManagePlatformResource(context.platform, 'users')).toBe(true);
+		expect(canManagePlatformResource(context.platform, 'namespaces')).toBe(true);
+	});
+
 	it('preserves ordinary permission filters and different local roles across namespaces', async () => {
 		const adapter = createMockNamespaceAdapter('multi-role');
 		const tracking = await adapter.mintTargetToken('tracking');
