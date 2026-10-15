@@ -32,7 +32,7 @@ export function registerModules(modules: ModuleConfig[]): {
 				modules.map(async (module) => {
 					const active = getNamespaceRuntime()?.state.active;
 					// These native modules require child-scoped backend reads/actions before they are safe to expose.
-					if (active?.namespace.kind === 'virtual' && ['users', 'files', 'settings', 'activity'].includes(module.id))
+					if (active?.namespace.kind === 'virtual' && ['files', 'settings', 'activity'].includes(module.id))
 						return null;
 					if (!module.preRegisterCheck) return module;
 

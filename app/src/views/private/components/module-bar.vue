@@ -55,8 +55,12 @@ export default defineComponent({
 			if (!settingsStore.settings) return [];
 
 			const configured: Record<string, any>[] = (settingsStore.settings.module_bar ?? MODULE_BAR_DEFAULT)
-				// The shared directory has a separate platform entry when namespaces are enabled.
-				.filter((part) => !(namespaceFrontendEnabled && part.type === 'module' && part.id === 'users'))
+				// Main-namespace accounts live in Global Administration; child namespaces show local members here.
+				.filter(
+					(part) =>
+						!(namespaceFrontendEnabled && part.type === 'module' && part.id === 'users' &&
+							getNamespaceRuntime()?.state.active?.namespace.kind !== 'virtual')
+				)
 				.filter((modulePart) => {
 					if (modulePart.type === 'link') return true;
 					return modulePart.enabled && registeredModuleIDs.value.includes(modulePart.id);

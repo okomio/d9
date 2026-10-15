@@ -1,6 +1,7 @@
 import { defineModule } from '@wbce-d9/utils';
-import Collection from './routes/collection.vue';
-import Item from './routes/item.vue';
+import ActiveCollection from './routes/active-collection.vue';
+import ActiveItem from './routes/active-item.vue';
+import { getNamespaceRuntime } from '@/namespaces/live';
 
 export default defineModule({
 	id: 'users',
@@ -10,7 +11,7 @@ export default defineModule({
 		{
 			name: 'users-collection',
 			path: '',
-			component: Collection,
+			component: ActiveCollection,
 			props: (route) => ({
 				role: route.params.role,
 				bookmark: route.query.bookmark,
@@ -19,7 +20,7 @@ export default defineModule({
 		{
 			name: 'users-item',
 			path: ':primaryKey',
-			component: Item,
+			component: ActiveItem,
 			props: true,
 		},
 		{
@@ -29,13 +30,13 @@ export default defineModule({
 		{
 			name: 'roles-collection',
 			path: 'roles/:role',
-			component: Collection,
+			component: ActiveCollection,
 			props: true,
 		},
 		{
 			name: 'roles-item-add',
 			path: 'roles/:role/+',
-			component: Item,
+			component: ActiveItem,
 			props: (route) => ({
 				primaryKey: '+',
 				role: route.params.role,
@@ -43,6 +44,8 @@ export default defineModule({
 		},
 	],
 	preRegisterCheck(user, permissions) {
+		const active = getNamespaceRuntime()?.state.active;
+		if (active?.namespace.kind === 'virtual') return active.access.canManageMembers;
 		const admin = user.role.admin_access;
 		if (admin) return true;
 
