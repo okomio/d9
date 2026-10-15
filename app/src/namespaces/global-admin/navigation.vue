@@ -8,7 +8,7 @@
 			<v-list-item-icon><v-icon name="people_alt" /></v-list-item-icon>
 			<v-list-item-content>All Users</v-list-item-content>
 		</v-list-item>
-		<v-list-item to="/global-admin/namespaces" :active="route.path === '/global-admin/namespaces'">
+		<v-list-item to="/global-admin/namespaces" :active="route.path.startsWith('/global-admin/namespaces')">
 			<v-list-item-icon><v-icon name="account_tree" /></v-list-item-icon>
 			<v-list-item-content>Virtual Namespaces</v-list-item-content>
 		</v-list-item>

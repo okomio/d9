@@ -4,18 +4,34 @@
 			<v-button class="header-icon" rounded disabled icon secondary><v-icon name="account_tree" /></v-button>
 		</template>
 		<template #navigation><global-navigation /></template>
+		<template #actions:prepend>
+			<span class="item-count">{{ t('item_count', { count: filteredNamespaces.length }) }}</span>
+		</template>
 		<template #actions>
-			<v-button v-tooltip.bottom="'Refresh namespaces'" rounded icon secondary :loading="loading" @click="refresh">
-				<v-icon name="refresh" />
+			<search-input v-model="search" :filter-count="activeFilterCount">
+				<template #filter>
+					<div class="namespace-filters">
+						<div class="filter-field">
+							<label>Readiness</label>
+							<v-select v-model="readinessFilter" :items="readinessOptions" />
+						</div>
+						<div class="filter-field">
+							<label>Access</label>
+							<v-select v-model="accessFilter" :items="accessOptions" />
+						</div>
+						<v-button v-if="activeFilterCount" small secondary @click="clearFilters">Clear filters</v-button>
+					</div>
+				</template>
+			</search-input>
+			<v-button v-tooltip.bottom="'Create Namespace'" rounded icon to="/global-admin/namespaces/new">
+				<v-icon name="add" />
 			</v-button>
-			<v-button v-tooltip.bottom="'Create Namespace requires D06'" disabled>Create Namespace</v-button>
 		</template>
 		<template #sidebar>
 			<sidebar-detail icon="info" title="Namespace management" close>
-				<p>
-					Create Namespace is awaiting the D06 platform create and status API. Entering a ready namespace is explicit.
-				</p>
+				<p>Entering a ready namespace is explicit. Searching and filtering do not change the active namespace.</p>
 				<p v-if="selected.length">{{ selected.length }} selected</p>
+				<v-button secondary :loading="loading" @click="refresh">Refresh namespaces</v-button>
 			</sidebar-detail>
 		</template>
 		<div class="directory">
@@ -26,7 +42,7 @@
 			<v-table
 				v-model="selected"
 				v-model:headers="headers"
-				:items="namespaces"
+				:items="filteredNamespaces"
 				:loading="loading"
 				show-select="multiple"
 				show-resize
@@ -56,30 +72,74 @@
 				icon="account_tree"
 				center
 			/>
+			<v-info
+				v-else-if="!loading && !error && filteredNamespaces.length === 0"
+				title="No matching namespaces"
+				icon="search"
+				center
+			/>
 			<v-notice v-if="switchError" type="danger">{{ switchError }}</v-notice>
 		</div>
 	</private-view>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { ensureNamespaceRuntime } from '@/namespaces/live';
 import { canManagePlatformResource } from '@/namespaces/capabilities';
 import type { HeaderRaw } from '@/components/v-table/types';
+import SearchInput from '@/views/private/components/search-input.vue';
 import GlobalNavigation from './navigation.vue';
 
 const runtime = ensureNamespaceRuntime();
+const { t } = useI18n();
 const loading = ref(false);
 const entering = ref(false);
 const error = ref<string | null>(null);
 const switchError = ref<string | null>(null);
 const selected = ref<{ id: string }[]>([]);
+const search = ref<string | null>(null);
+const readinessFilter = ref('all');
+const accessFilter = ref('all');
+
+const readinessOptions = [
+	{ text: 'All statuses', value: 'all' },
+	{ text: 'Ready', value: 'ready' },
+	{ text: 'Provisioning', value: 'provisioning' },
+	{ text: 'Failed', value: 'failed' },
+];
+
+const accessOptions = [
+	{ text: 'All access', value: 'all' },
+	{ text: 'App access', value: 'app' },
+	{ text: 'API access only', value: 'api' },
+];
+
+const activeFilterCount = computed(
+	() => Number(readinessFilter.value !== 'all') + Number(accessFilter.value !== 'all')
+);
 
 const namespaces = computed(() =>
 	runtime.state.choices
 		.filter((choice) => choice.namespace.kind === 'virtual')
 		.map((choice) => ({ ...choice.namespace, canUseApp: choice.access.canUseApp }))
 );
+
+const filteredNamespaces = computed(() => {
+	const query = search.value?.trim().toLocaleLowerCase() ?? '';
+	return namespaces.value.filter((namespace) => {
+		if (query && !`${namespace.name} ${namespace.id}`.toLocaleLowerCase().includes(query)) return false;
+		if (readinessFilter.value !== 'all' && namespace.readiness !== readinessFilter.value) return false;
+		if (accessFilter.value === 'app' && !namespace.canUseApp) return false;
+		if (accessFilter.value === 'api' && namespace.canUseApp) return false;
+		return true;
+	});
+});
+
+watch([search, readinessFilter, accessFilter], () => {
+	selected.value = [];
+});
 
 const headers = ref<HeaderRaw[]>([
 	{ text: 'Name', value: 'name', width: 280 },
@@ -90,6 +150,11 @@ const headers = ref<HeaderRaw[]>([
 onMounted(() => {
 	void refresh();
 });
+
+function clearFilters() {
+	readinessFilter.value = 'all';
+	accessFilter.value = 'all';
+}
 
 async function refresh() {
 	if (!canManagePlatformResource(runtime.state.session?.platform ?? null, 'namespaces')) return;
@@ -142,5 +207,26 @@ async function enter(id: string) {
 }
 .v-table {
 	--layout-offset-top: 64px;
+}
+.item-count {
+	display: none;
+	margin: 0 8px;
+	color: var(--foreground-subdued);
+	white-space: nowrap;
+}
+@media (min-width: 600px) {
+	.item-count {
+		display: inline;
+	}
+}
+.namespace-filters {
+	display: grid;
+	gap: 12px;
+	min-width: 240px;
+	margin: 10px 8px;
+}
+.filter-field {
+	display: grid;
+	gap: 4px;
 }
 </style>

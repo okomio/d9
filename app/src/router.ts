@@ -153,6 +153,12 @@ export const defaultRoutes: RouteRecordRaw[] = [
 		component: () => import('@/namespaces/global-admin/namespaces.vue'),
 		meta: { namespacePlatform: true, track: false },
 	},
+	{
+		name: 'global-admin-namespace-new',
+		path: '/global-admin/namespaces/new',
+		component: () => import('@/namespaces/global-admin/new-namespace.vue'),
+		meta: { namespacePlatform: true, track: false },
+	},
 ];
 
 export const router = createRouter({
@@ -302,7 +308,10 @@ export const onBeforeEach: NavigationGuard = async (to) => {
 
 		const runtime = ensureNamespaceRuntime();
 		// Check a switch permit too: it must not bypass platform authority.
-		const platformResource = to.name === 'global-admin-namespaces' ? 'namespaces' : 'users';
+
+		const platformResource =
+			to.name === 'global-admin-namespaces' || to.name === 'global-admin-namespace-new' ? 'namespaces' : 'users';
+
 		if (
 			to.meta.namespacePlatform &&
 			runtime.state.session &&
