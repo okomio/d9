@@ -110,6 +110,30 @@ async function resolveRole(
 	return (await listMemberships(database, caller.user, namespace.id)).get(namespace.id);
 }
 
+/**
+ * Whether the caller may use the app in this namespace.
+ *
+ * Entry authority is namespace-independent for a Global Admin, so app entitlement
+ * has to be too. Reading `app_access` alone made the two flags contradict each
+ * other — enterable, but reported unable to use the app — and the shell treats
+ * that as `app-denied` and refuses to enter at all, which strands a Global Admin
+ * with no membership on the chooser.
+ *
+ * A role that bypasses every ACL is likewise not "API only": the surfaces it
+ * exists to administer require app access. A member whose role grants neither
+ * keeps the API-only label.
+ */
+function hasEffectiveAppAccess(
+	isMain: boolean,
+	membership: NamespaceRole | undefined,
+	caller: CallerIdentity
+): boolean {
+	if (caller.admin === true) return true;
+	if (isMain) return caller.app === true;
+
+	return membership?.app_access === true || membership?.admin_access === true;
+}
+
 function buildAccess(namespace: NamespaceRecord, membership: NamespaceRole | undefined, caller: CallerIdentity): NamespaceAccess {
 	const isMain = namespace.kind === 'main';
 
@@ -121,7 +145,7 @@ function buildAccess(namespace: NamespaceRecord, membership: NamespaceRole | und
 		local_role: membership ?? null,
 		inherited_admin: !isMain && caller.admin === true,
 		can_enter: namespace.readiness === 'ready',
-		can_use_app: isMain ? caller.app === true : membership?.app_access === true,
+		can_use_app: hasEffectiveAppAccess(isMain, membership, caller),
 	};
 }
 
