@@ -1,13 +1,14 @@
 import type { Knex } from 'knex';
 import { getActiveNamespace } from './context.js';
-import { CONTROL_PLANE_SCHEMA, SHARED_TABLES } from './tables.js';
+import { CONTROL_PLANE_SCHEMA, EXCLUDED_TABLES, SHARED_TABLES } from './tables.js';
 
 /**
  * The collections a namespace is allowed to expose.
  *
  * A collection is owned when its table lives in the namespace's own schema, or
- * when it is a shared control-plane table reached through the `public` fallback
- * in `search_path`.
+ * when it is reached through the `public` fallback in `search_path` — the shared
+ * control-plane tables, and the few area tables deliberately left behind because
+ * the shared user table references them.
  *
  * This exists because `search_path` alone is not isolation. It gives shadowing
  * for *data* reads — the first schema wins — but the schema inspector selects
@@ -32,11 +33,11 @@ export async function listOwnedCollections(database: Knex): Promise<Set<string> 
 		.where({ table_type: 'BASE TABLE' })
 		.whereIn('table_schema', [namespace, CONTROL_PLANE_SCHEMA]);
 
-	const shared = new Set(SHARED_TABLES);
+	const reachable = new Set([...SHARED_TABLES, ...EXCLUDED_TABLES]);
 	const owned = new Set<string>();
 
 	for (const { table_name: table, table_schema: schema } of rows) {
-		if (schema === namespace || shared.has(table)) owned.add(table);
+		if (schema === namespace || reachable.has(table)) owned.add(table);
 	}
 
 	return owned;

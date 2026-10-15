@@ -30,3 +30,14 @@ export const SHARED_TABLES = [
 	'directus_user_namespaces',
 	'directus_users',
 ];
+
+/**
+ * Tables deliberately left in `public` instead of moving into an area's namespace.
+ *
+ * `directus_users` holds foreign keys into both, and the shared user table must not depend on a
+ * namespace. They stay visible from every namespace — `public` is in every `search_path` — so the
+ * ownership filter has to count them as reachable. Otherwise a relation pointing at one of them
+ * (`tracking_tags.team` → `tracking_teams`) cannot resolve, and the request fails with
+ * `Cannot read properties of undefined (reading 'primary')`.
+ */
+export const EXCLUDED_TABLES = ['tracking_teams', 'tracking_tiers'];

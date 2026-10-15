@@ -8,7 +8,8 @@
 import type { Knex } from 'knex';
 
 import { copyTable, listAreaCollections, listNamespaceSystemTables } from './provision.js';
-import { CONTROL_PLANE_SCHEMA, SHARED_TABLES } from './tables.js';
+import { CONTROL_PLANE_SCHEMA, EXCLUDED_TABLES, SHARED_TABLES } from './tables.js';
+export { EXCLUDED_TABLES };
 
 /** Postgres identifier quoting; identifiers still go through knex `??` where possible. */
 const quoteIdent = (name: string): string => `"${name.replace(/"/g, '""')}"`;
@@ -64,14 +65,7 @@ export const ROLE_NAMESPACES: Record<string, string> = {
 	'Translation Manager': 'translations',
 };
 
-/**
- * Tables that deliberately stay in `public`.
- *
- * `directus_users` holds foreign keys into these two, so moving them would make
- * the shared user table depend on a namespace. They move once the
- * `tracking_team`/`tracking_tier` columns are redesigned into their own table.
- */
-export const EXCLUDED_TABLES = ['tracking_teams', 'tracking_tiers'];
+
 
 /**
  * Flows removed rather than migrated, because they belong to no area and do nothing.
