@@ -6,11 +6,12 @@
 		v-slot="{ layoutState }"
 		v-model:selection="selection"
 		v-model:layout-options="layoutOptions"
-		v-model:layout-query="layoutQuery"
-		:filter="mergeFilters(filter, roleFilter)"
-		:filter-user="filter"
+		v-model:layout-query="directoryLayoutQuery"
+		:filter="mergeFilters(virtual ? statusFilterValue : filter, roleFilter)"
+		:filter-user="virtual ? statusFilterValue : filter"
 		:filter-system="roleFilter"
 		:search="search"
+		:select-mode="virtual"
 		collection="directus_users"
 		:reset-preset="resetPreset"
 	>
@@ -26,7 +27,7 @@
 			</template>
 
 			<template #title-outer:append>
-				<div class="bookmark-controls">
+				<div v-if="!virtual" class="bookmark-controls">
 					<bookmark-add
 						v-if="!bookmark && !platform"
 						v-model="bookmarkDialogActive"
@@ -79,9 +80,24 @@
 			</template>
 
 			<template #actions>
-				<search-input v-model="search" v-model:filter="filter" collection="directus_users" />
+				<search-input v-if="!virtual" v-model="search" v-model:filter="filter" collection="directus_users" />
+				<search-input v-else v-model="search" :filter="statusFilterValue" collection="directus_users">
+					<template #filter>
+						<v-list>
+							<v-list-item
+								v-for="option in statusOptions"
+								:key="option.value ?? 'all'"
+								clickable
+								:active="statusFilter === option.value"
+								@click="statusFilter = option.value"
+							>
+								<v-list-item-content>{{ option.text }}</v-list-item-content>
+							</v-list-item>
+						</v-list>
+					</template>
+				</search-input>
 
-				<v-dialog v-if="selection.length > 0" v-model="confirmDelete" @esc="confirmDelete = false">
+				<v-dialog v-if="selection.length > 0 && !virtual" v-model="confirmDelete" @esc="confirmDelete = false">
 					<template #activator="{ on }">
 						<v-button
 							v-tooltip.bottom="batchDeleteAllowed ? t('delete_label') : t('not_allowed')"
@@ -111,7 +127,7 @@
 				</v-dialog>
 
 				<v-button
-					v-if="selection.length > 0 && !platform"
+					v-if="selection.length > 0 && !platform && !virtual"
 					v-tooltip.bottom="batchEditAllowed ? t('edit') : t('not_allowed')"
 					rounded
 					icon
@@ -123,7 +139,28 @@
 				</v-button>
 
 				<v-button
-					v-if="canInviteUsers && !platform"
+					v-if="virtual && selection.length > 0"
+					v-tooltip.bottom="'Change local role'"
+					rounded
+					icon
+					secondary
+					@click="memberDialogs?.openRole()"
+				>
+					<v-icon name="edit" />
+				</v-button>
+				<v-button
+					v-if="virtual && selection.length > 0"
+					v-tooltip.bottom="'Remove from namespace'"
+					rounded
+					icon
+					secondary
+					@click="memberDialogs?.openRemove()"
+				>
+					<v-icon name="person_remove" />
+				</v-button>
+
+				<v-button
+					v-if="canInviteUsers && !platform && !virtual"
 					v-tooltip.bottom="t('invite_users')"
 					rounded
 					icon
@@ -144,7 +181,11 @@
 					<v-icon name="person_add" />
 				</v-button>
 
+				<v-button v-if="virtual" v-tooltip.bottom="'Add existing user'" rounded icon @click="memberDialogs?.openAdd()">
+					<v-icon name="add" />
+				</v-button>
 				<v-button
+					v-else
 					v-tooltip.bottom="platform ? 'Create User (D14)' : createAllowed ? t('create_item') : t('not_allowed')"
 					rounded
 					icon
@@ -157,7 +198,7 @@
 
 			<template #navigation>
 				<global-navigation v-if="platform" />
-				<users-navigation v-else :current-role="role" current-collection="directus_users" />
+				<users-navigation v-else :current-role="role" current-collection="directus_users" :virtual="virtual" />
 			</template>
 
 			<v-info
@@ -176,7 +217,19 @@
 				</template>
 			</v-info>
 
-			<users-invite v-if="canInviteUsers && !platform" v-model="userInviteModalActive" @update:model-value="refresh" />
+			<users-invite
+				v-if="canInviteUsers && !platform && !virtual"
+				v-model="userInviteModalActive"
+				@update:model-value="refresh"
+			/>
+			<namespace-member-dialogs
+				v-if="virtual"
+				ref="memberDialogs"
+				:selection="selection"
+				:selected-role-id="selectedRoleId"
+				@refresh="refresh"
+				@clear-selection="selection = []"
+			/>
 			<users-invite
 				v-if="platform"
 				v-model="userInviteModalActive"
@@ -187,10 +240,18 @@
 
 			<component :is="`layout-${layout}`" v-bind="layoutState">
 				<template #no-results>
-					<v-info v-if="!filter && !search" :title="t('user_count', 0)" icon="people_alt" center>
+					<v-info
+						v-if="!(virtual ? statusFilterValue : filter) && !search && !role"
+						:title="t('user_count', 0)"
+						icon="people_alt"
+						center
+					>
 						{{ t('no_users_copy') }}
 
-						<template v-if="canInviteUsers || platform" #append>
+						<template v-if="virtual" #append>
+							<v-button @click="memberDialogs?.openAdd()">Add existing user</v-button>
+						</template>
+						<template v-else-if="canInviteUsers || platform" #append>
 							<v-button
 								:to="
 									platform
@@ -218,7 +279,10 @@
 					<v-info :title="t('user_count', 0)" icon="people_alt" center>
 						{{ t('no_users_copy') }}
 
-						<template v-if="canInviteUsers || platform" #append>
+						<template v-if="virtual" #append>
+							<v-button @click="memberDialogs?.openAdd()">Add existing user</v-button>
+						</template>
+						<template v-else-if="canInviteUsers || platform" #append>
 							<v-button
 								:to="
 									platform
@@ -236,7 +300,7 @@
 			</component>
 
 			<drawer-batch
-				v-if="!platform"
+				v-if="!platform && !virtual"
 				v-model:active="batchEditActive"
 				:primary-keys="selection"
 				collection="directus_users"
@@ -245,14 +309,18 @@
 
 			<template #sidebar>
 				<sidebar-detail icon="info" :title="t('information')" close>
-					<div v-md="t('page_help_users_collection')" class="page-description" />
+					<div v-if="virtual">
+						Members of the active namespace. Select users to change a local role or remove access.
+					</div>
+					<div v-else v-md="t('page_help_users_collection')" class="page-description" />
 				</sidebar-detail>
-				<layout-sidebar-detail v-model="layout">
+				<layout-sidebar-detail v-model="layout" :allowed-layouts="virtual ? ['cards', 'tabular'] : undefined">
 					<component :is="`layout-options-${layout}`" v-bind="layoutState" />
 				</layout-sidebar-detail>
 				<component :is="`layout-sidebar-${layout}`" v-bind="layoutState" />
 				<refresh-sidebar-detail v-model="refreshInterval" @refresh="refresh" />
 				<export-sidebar-detail
+					v-if="!virtual"
 					collection="directus_users"
 					:layout-query="layoutQuery"
 					:filter="mergeFilters(filter, roleFilter)"
@@ -267,9 +335,12 @@
 
 <script lang="ts" setup>
 import UsersInvite from '@/views/private/components/users-invite.vue';
-import { computed, ref, watch } from 'vue';
+import { computed, provide, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import UsersNavigation from '../components/navigation.vue';
+import NamespaceMemberDialogs from '../components/namespace-member-dialogs.vue';
+import { namespaceMemberItemsSource } from '../composables/use-namespace-member-items';
+import { itemsSourceKey } from '@wbce-d9/composables';
 import GlobalNavigation from '@/namespaces/global-admin/navigation.vue';
 import FilteredUsers from '@/namespaces/global-admin/filtered-users.vue';
 import { useRoute } from 'vue-router';
@@ -292,21 +363,22 @@ import useNavigation from '../composables/use-navigation';
 import { useRouter } from 'vue-router';
 import BookmarkAdd from '@/views/private/components/bookmark-add.vue';
 
-type Item = {
-	[field: string]: any;
-};
-
 interface Props {
 	role?: string | null;
 	bookmark?: string | null;
 	platform?: boolean;
+	virtual?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
 	role: null,
 	bookmark: null,
 	platform: false,
+	virtual: false,
 });
+
+if (props.virtual) provide(itemsSourceKey, namespaceMemberItemsSource);
+if (props.virtual) provide('namespace-member-view', true);
 
 const route = useRoute();
 
@@ -323,7 +395,25 @@ const permissionsStore = usePermissionsStore();
 const serverStore = useServerStore();
 
 const layoutRef = ref();
-const selection = ref<Item[]>([]);
+const memberDialogs = ref<InstanceType<typeof NamespaceMemberDialogs> | null>(null);
+const selection = ref<string[]>([]);
+
+const selectedRoleId = computed<string | null>(() => {
+	if (selection.value.length !== 1) return null;
+	return (
+		layoutRef.value?.state?.items?.find((item: { id: string }) => item.id === selection.value[0])?.local_role_id ?? null
+	);
+});
+
+const statusFilter = ref<string | null>(null);
+const statusFilterValue = computed(() => (statusFilter.value ? { status: { _eq: statusFilter.value } } : null));
+
+const statusOptions = [
+	{ text: 'All statuses', value: null },
+	{ text: 'Active', value: 'active' },
+	{ text: 'Invited', value: 'invited' },
+	{ text: 'Suspended', value: 'suspended' },
+];
 
 const router = useRouter();
 
@@ -362,6 +452,47 @@ const {
 	busy: bookmarkSaving,
 	clearLocalSave,
 } = usePreset(ref('directus_users'), bookmark);
+
+if (props.virtual && !['cards', 'tabular'].includes(layout.value ?? '')) layout.value = 'cards';
+
+// The member API returns only identity fields; keep native pagination and layout
+// settings while excluding fields that require shared-profile reads.
+const directoryLayoutQuery = computed({
+	get() {
+		if (!props.virtual) return layoutQuery.value;
+
+		const saved = layoutQuery.value ?? {};
+		const sortable = ['id', 'email', 'first_name', 'last_name', 'status'];
+
+		const sort =
+			Array.isArray(saved.sort) && sortable.includes(String(saved.sort[0]).replace(/^-/, '')) ? saved.sort : ['email'];
+
+		if (layout.value !== 'tabular') return { ...saved, sort };
+
+		const allowed = ['first_name', 'last_name', 'email', 'status'];
+
+		const fields = Array.isArray(saved.fields)
+			? saved.fields.filter((field: string) => allowed.includes(field))
+			: allowed;
+
+		return {
+			...saved,
+			sort,
+			fields: fields.length ? fields : allowed,
+		};
+	},
+	set(query) {
+		layoutQuery.value = query;
+	},
+});
+
+watch(
+	() => props.virtual,
+	() => {
+		selection.value = [];
+		statusFilter.value = null;
+	}
+);
 
 const { addNewLink } = useLinks();
 
@@ -515,6 +646,7 @@ function useBookmarks() {
 function clearFilters() {
 	filter.value = null;
 	search.value = null;
+	statusFilter.value = null;
 }
 
 function usePermissions() {
