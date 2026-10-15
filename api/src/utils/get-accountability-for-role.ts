@@ -1,6 +1,7 @@
 import type { Accountability, SchemaOverview } from '@wbce-d9/types';
 import type { Knex } from 'knex';
 import { InvalidConfigException } from '../exceptions/index.js';
+import { isVirtualNamespaceEnabled } from '../virtual-namespace/config.js';
 import { getPermissions } from './get-permissions.js';
 
 export async function getAccountabilityForRole(
@@ -29,6 +30,7 @@ export async function getAccountabilityForRole(
 			admin: true,
 			app: true,
 			permissions: [],
+			...(isVirtualNamespaceEnabled() ? { globalAdmin: context.accountability?.globalAdmin === true } : {}),
 		};
 	} else {
 		const roleInfo = await context.database

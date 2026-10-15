@@ -2,13 +2,7 @@ import argon2 from 'argon2';
 import Busboy from 'busboy';
 import { Router } from 'express';
 import Joi from 'joi';
-import { flushCaches } from '../cache.js';
-import {
-	ForbiddenException,
-	InvalidPayloadException,
-	InvalidQueryException,
-	UnsupportedMediaTypeException,
-} from '../exceptions/index.js';
+import { InvalidPayloadException, InvalidQueryException, UnsupportedMediaTypeException } from '../exceptions/index.js';
 import collectionExists from '../middleware/collection-exists.js';
 import { respond } from '../middleware/respond.js';
 import { ExportService, ImportService } from '../services/import-export.js';
@@ -179,11 +173,8 @@ router.post(
 router.post(
 	'/cache/clear',
 	asyncHandler(async (req, res) => {
-		if (req.accountability?.admin !== true) {
-			throw new ForbiddenException();
-		}
-
-		await flushCaches(true);
+		const service = new UtilsService({ accountability: req.accountability, schema: req.schema });
+		await service.clearCache();
 
 		res.status(200).end();
 	})

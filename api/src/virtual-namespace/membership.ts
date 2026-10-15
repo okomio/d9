@@ -41,6 +41,7 @@ export async function resolveNamespaceMembership(
 		.leftJoin(`${ROLES_TABLE} as r`, 'm.role_id', 'r.id')
 		.where('m.user_id', userId)
 		.andWhere('m.namespace_id', namespaceId)
+		.andWhere('r.namespace', namespaceId)
 		.first();
 
 	if (!membership?.role) return undefined;

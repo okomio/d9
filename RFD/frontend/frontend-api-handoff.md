@@ -4,11 +4,31 @@ Reviewed 2026-10-14. [endpoint-inventory.md](../../endpoint-inventory.md) is the
 
 ## Baseline versus current Foundation work
 
-Current source contains `api/src/virtual-namespace/` groundwork. With `VIRTUAL_NAMESPACES_ENABLED=true`, middleware resolves a token's `namespace` claim, then the optional debug `x-namespace` header when enabled, then `VIRTUAL_NAMESPACES_DEFAULT`. Non-global users resolve role and app/admin flags from `directus_user_namespaces`; requests without membership receive generic `FORBIDDEN`. The current backend also exposes `GET /namespaces`, `POST /namespaces/:id/token`, optional-namespace `POST /auth/refresh`, and local member list/lookup/assign/change/unassign. This is meaningful Foundation progress, not a completed frontend handoff. The frontend C1–C7 status is unchanged.
+T6 update, 2026-10-15: with `VIRTUAL_NAMESPACES_ENABLED=true`, middleware resolves a verified token's `namespace` claim,
+then the optional tooling `x-namespace` header, then the authenticated owner's current primary-role namespace, then
+`VIRTUAL_NAMESPACES_DEFAULT` only when no owner mapping exists. The header requires
+`VIRTUAL_NAMESPACES_ALLOW_HEADER=true` and is always ignored in production. Conflicting enabled token/header selectors
+return `400 INVALID_PAYLOAD`; invalid or inaccessible selections return `403 FORBIDDEN` without fallback. Main uses the
+current shared main role; children resolve local role/access flags from membership. Global Admin retains cross-namespace
+authority. The existing discovery, scoped token, refresh and member APIs remain available. Frontend C1–C7 delivery
+status is unchanged.
 
-The middleware now recomputes role/admin/app flags for a namespace member and records membership-derived admin authority for a separate control-plane write guard. Main-derived Global Admin still crosses children without a membership. The access DTO's child `can_use_app` currently comes only from `membership?.app_access`, however, so an inherited Global Admin with no child role gets a false app flag in the response. D04 must reconcile that DTO with the intended effective authority and verify TFA/IP policy; the frontend must not infer platform authority from the selected child role.
+`GET /namespaces.default` and login/refresh context now agree with claim-less content routing. They report `null` when
+the selected default is missing, unready or inaccessible, even if another namespace is available. This is a
+compatibility mapping, not a saved profile preference. Defaultless identity/discovery remain available, and
+login/refresh without an explicit target keep issuing claim-less tokens. The frontend must use the chooser for another
+target and obtain a scoped token; it must not treat the tooling header as its switch mechanism.
 
-The middleware now exempts explicit control-plane paths, including `/auth`, `/users/me`, `/namespaces` and `/assets`, from namespace resolution. The first three support recovery/bootstrap; `/assets` remaining outside namespace routing is an isolation issue for D07, not proof that previews are safe. The debug header is not the agreed UI switch mechanism. D01/D02 still need no-access/default behavior and error examples verified with live requests.
+The middleware recomputes local role/admin/app flags for a namespace member and records membership-derived admin
+authority for the control-plane write guard. Main-derived Global Admin crosses ready children without a membership;
+effective `can_use_app` also includes inherited Global Admin authority. The frontend must consume effective context
+rather than infer platform authority from a child role. D04 still owns the broader TFA/IP policy verification.
+
+The middleware now exempts explicit control-plane paths, including `/auth`, `/users/me`, `/namespaces` and `/assets`,
+from namespace resolution. The first three support recovery/bootstrap; `/assets` remaining outside namespace routing is
+an isolation issue for D07, not proof that previews are safe. The debug header is not the agreed UI switch mechanism.
+T6 now has local synthetic HTTP coverage for defaultless REST/GraphQL bootstrap and selection errors; deployed
+examples and frontend recovery remain D01/D02 acceptance work.
 
 ## Relevant current contracts and required frontend treatment
 

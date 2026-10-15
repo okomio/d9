@@ -40,12 +40,32 @@ Deployment cookie/OAuth patches, configured token lifetimes and error-handler ov
 ### Agreed prototype behavior
 
 - **Disabled mode:** `VIRTUAL_NAMESPACES_ENABLED=false` preserves existing single-context behavior.
-- **Keep the legacy context intact:** existing Infrastructure collections remain together during the prototype. Use separately prepared namespace fixtures for isolation checks, without moving production collections. Existing callers keep their tokens, URLs and access to that legacy context.
-- **Legacy defaults:** claim-less authenticated callers without an explicit selector use a deterministic owner-default mapping that preserves existing Infrastructure access. Resolve ownership from authenticated accounts, never caller labels or user agents. An instance default is sufficient only where that mapping and equivalent access are demonstrated.
-- **Explicit selection:** a verified namespace claim is authoritative. Accept a matching `x-namespace`; reject a conflicting header before data access or side effects. Claim-less authenticated tokens may use an authorized header fallback. The header is a selector, not an authorization grant.
-- **Failed selection:** unknown, inaccessible or unready explicit targets fail closed without falling back to another namespace. Namespace denial remains distinguishable from confirmed session expiry. Exact new error DTOs belong to the shared contract.
-- **Shared control operations:** authentication, identity/bootstrap, available-namespace discovery and token issuance remain reachable without membership in a default namespace. A valid login with no accessible content namespace is not an expired session.
-- **Effective authorization:** resolve local role, admin/app flags and applicable IP/TFA policy consistently. Global Admin authority inherits from main-namespace admin access; a child admin role cannot grant platform authority. Global Admin can enter a child without a persisted membership, while content requests still address one namespace at a time.
+- **Keep the legacy context intact:** existing Infrastructure collections remain together during the prototype. Use
+  separately prepared namespace fixtures for isolation checks, without moving production collections. Existing callers
+  keep their tokens, URLs and access to that legacy context.
+- **Legacy defaults (T6):** claim-less authenticated callers without an explicit selector use their current primary
+  role's namespace, read from the shared account/role tables rather than JWT role claims. Only when that mapping is
+  absent does `VIRTUAL_NAMESPACES_DEFAULT` apply. A selected default that is unknown, unready or unauthorized fails
+  closed without selecting another namespace. Defaults follow current account ownership, never caller labels, user
+  agents or membership ordering. Representative deployed ownership/access mappings still need validation.
+- **Explicit selection:** a verified namespace claim is authoritative. The `x-namespace` fallback is tooling-only:
+  enabled by `VIRTUAL_NAMESPACES_ALLOW_HEADER=true` outside production, ignored otherwise. Normalize whitespace, accept
+  a matching enabled header, and reject a conflicting enabled header before data access or side effects. Claim-less
+  authenticated tokens may use an authorized tooling header before their owner default. The header selects a namespace
+  without granting authorization; production switching uses scoped tokens.
+- **Failed selection:** unknown, inaccessible or unready explicit targets fail closed without falling back to another
+  namespace. Namespace denial remains distinguishable from confirmed session expiry. Exact new error DTOs belong to the
+  shared contract.
+- **Shared control operations:** authentication, identity/bootstrap, available-namespace discovery and token issuance
+  remain reachable without membership in a default namespace. A valid login with no accessible content namespace is not
+  an expired session.
+- **Consistent reporting (T6):** `/namespaces.default` and login/refresh namespace context describe the same authorized
+  default as content routing, or return `null` when none is usable. Discovery may still list other accessible namespaces
+  without choosing one automatically. Main authorizes through the current shared main role; children require local
+  membership unless Global Admin authority applies. No saved user preference or database migration is introduced.
+- **Effective authorization:** resolve local role, admin/app flags and applicable IP/TFA policy consistently. Global
+  Admin authority inherits from main-namespace admin access; a child admin role cannot grant platform authority. Global
+  Admin can enter a child without a persisted membership, while content requests still address one namespace at a time.
 
 Switching mints/installs target access while preserving the shared login session. Refresh preserves each tab's namespace. Admitted writes, retries, exports and background jobs retain their originating namespace; switching cannot reinterpret them under target credentials.
 

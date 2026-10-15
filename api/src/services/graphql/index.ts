@@ -44,7 +44,6 @@ import type {
 import { GraphQLJSON, InputTypeComposer, ObjectTypeComposer, SchemaComposer, toInputObjectType } from 'graphql-compose';
 import type { Knex } from 'knex';
 import { flatten, get, mapKeys, merge, omit, pick, set, transform, uniq } from 'lodash-es';
-import { clearSystemCache, getCache } from '../../cache.js';
 import {
 	ACCESS_COOKIE_CLEAR_OPTIONS,
 	ACCESS_COOKIE_OPTIONS,
@@ -55,7 +54,7 @@ import {
 } from '../../constants.js';
 import getDatabase from '../../database/index.js';
 import env from '../../env.js';
-import { ForbiddenException, GraphQLValidationException, InvalidPayloadException } from '../../exceptions/index.js';
+import { GraphQLValidationException, InvalidPayloadException } from '../../exceptions/index.js';
 import { getExtensionManager } from '../../extensions.js';
 import type { AbstractServiceOptions, GraphQLParams, Item } from '../../types/index.js';
 import { generateHash } from '../../utils/generate-hash.js';
@@ -63,6 +62,10 @@ import { getGraphQLType } from '../../utils/get-graphql-type.js';
 import { reduceSchema } from '../../utils/reduce-schema.js';
 import { sanitizeQuery } from '../../utils/sanitize-query.js';
 import { validateQuery } from '../../utils/validate-query.js';
+import { getPermissions } from '../../utils/get-permissions.js';
+import { isVirtualNamespaceEnabled } from '../../virtual-namespace/config.js';
+import { hasGlobalAuthority, resolveSharedAccountability } from '../../virtual-namespace/authority.js';
+import { runWithoutNamespace } from '../../virtual-namespace/context.js';
 import { ActivityService } from '../activity.js';
 import { AuthenticationService } from '../authentication.js';
 import { CollectionsService } from '../collections.js';
@@ -125,6 +128,14 @@ export class GraphQLService {
 		this.knex = options?.knex || getDatabase();
 		this.schema = options.schema;
 		this.scope = options.scope;
+	}
+
+	/** Personal operations use the shared account's ACL, even in a mixed request. */
+	private async identityAccountability(): Promise<Accountability | null> {
+		if (!this.accountability || !isVirtualNamespaceEnabled()) return this.accountability;
+		const accountability = await resolveSharedAccountability(this.knex, this.accountability);
+		accountability.permissions = await runWithoutNamespace(() => getPermissions(accountability, this.schema));
+		return accountability;
 	}
 
 	/**
@@ -1903,7 +1914,7 @@ export class GraphQLService {
 			});
 		}
 
-		if (this.accountability?.admin === true) {
+		if (hasGlobalAuthority(this.accountability)) {
 			ServerInfo.addFields({
 				directus: {
 					type: new GraphQLObjectType({
@@ -2009,7 +2020,7 @@ export class GraphQLService {
 				type: ServerInfo,
 				resolve: async () => {
 					const service = new ServerService({
-						accountability: this.accountability,
+						accountability: await this.identityAccountability(),
 						schema: this.schema,
 					});
 
@@ -2020,7 +2031,7 @@ export class GraphQLService {
 				type: GraphQLJSON,
 				resolve: async () => {
 					const service = new ServerService({
-						accountability: this.accountability,
+						accountability: await this.identityAccountability(),
 						schema: this.schema,
 					});
 
@@ -2229,9 +2240,10 @@ export class GraphQLService {
 				},
 				resolve: async (_, args) => {
 					if (!this.accountability?.user) return null;
+					const accountability = await this.identityAccountability();
 
 					const service = new TFAService({
-						accountability: this.accountability,
+						accountability,
 						schema: this.schema,
 					});
 
@@ -2253,9 +2265,10 @@ export class GraphQLService {
 				},
 				resolve: async (_, args) => {
 					if (!this.accountability?.user) return null;
+					const accountability = await this.identityAccountability();
 
 					const service = new TFAService({
-						accountability: this.accountability,
+						accountability,
 						schema: this.schema,
 					});
 
@@ -2270,9 +2283,10 @@ export class GraphQLService {
 				},
 				resolve: async (_, args) => {
 					if (!this.accountability?.user) return null;
+					const accountability = await this.identityAccountability();
 
 					const service = new TFAService({
-						accountability: this.accountability,
+						accountability,
 						schema: this.schema,
 					});
 
@@ -2356,16 +2370,8 @@ export class GraphQLService {
 			utils_cache_clear: {
 				type: GraphQLVoid,
 				resolve: async () => {
-					if (this.accountability?.admin !== true) {
-						throw new ForbiddenException();
-					}
-
-					const { cache } = getCache();
-
-					await cache?.clear();
-					await clearSystemCache();
-
-					return;
+					const service = new UtilsService({ accountability: this.accountability, schema: this.schema });
+					await service.clearCache();
 				},
 			},
 			users_invite_accept: {
@@ -2788,7 +2794,8 @@ export class GraphQLService {
 					type: ReadCollectionTypes['directus_users']!,
 					resolve: async (_, args, __, info) => {
 						if (!this.accountability?.user) return null;
-						const service = new UsersService({ schema: this.schema, accountability: this.accountability });
+						const accountability = await this.identityAccountability();
+						const service = new UsersService({ schema: this.schema, accountability });
 
 						const selections = this.replaceFragmentsInSelections(
 							info.fieldNodes[0]?.selectionSet?.selections,
@@ -2797,7 +2804,7 @@ export class GraphQLService {
 
 						const query = this.getQuery(args, selections || [], info.variableValues);
 
-						return await service.readOne(this.accountability.user, query);
+						return await service.readOne(this.accountability.user, query, { sharedUserScope: 'self' });
 					},
 				},
 			});
@@ -2812,10 +2819,11 @@ export class GraphQLService {
 					},
 					resolve: async (_, args, __, info) => {
 						if (!this.accountability?.user) return null;
+						const accountability = await this.identityAccountability();
 
 						const service = new UsersService({
 							schema: this.schema,
-							accountability: this.accountability,
+							accountability,
 						});
 
 						await service.updateOne(this.accountability.user, args['data']);
@@ -2828,7 +2836,7 @@ export class GraphQLService {
 
 							const query = this.getQuery(args, selections || [], info.variableValues);
 
-							return await service.readOne(this.accountability.user, query);
+							return await service.readOne(this.accountability.user, query, { sharedUserScope: 'self' });
 						}
 
 						return true;

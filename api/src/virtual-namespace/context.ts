@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import type { NamespaceKind } from './registry.js';
 
 /**
  * The active virtual namespace for the duration of a request.
@@ -14,6 +15,8 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 type NamespaceContext = {
 	id: string;
 	schema: string;
+	kind?: NamespaceKind;
+	responseCacheFingerprint?: string;
 };
 
 const namespaceStorage = new AsyncLocalStorage<NamespaceContext>();
@@ -28,6 +31,25 @@ export function getActiveNamespaceId(): string | undefined {
 	return namespaceStorage.getStore()?.id;
 }
 
+export function getActiveNamespaceKind(): NamespaceKind | undefined {
+	return namespaceStorage.getStore()?.kind;
+}
+
+export function getNamespaceResponseCacheFingerprint(): string | undefined {
+	return namespaceStorage.getStore()?.responseCacheFingerprint;
+}
+
+/** Compute once at request admission; cache reads and writes must use the same value. */
+export function setNamespaceResponseCacheFingerprint(fingerprint: string): void {
+	const context = namespaceStorage.getStore();
+	if (context) context.responseCacheFingerprint = fingerprint;
+}
+
 export function runWithNamespace<T>(context: NamespaceContext, callback: () => T): T {
 	return namespaceStorage.run(context, callback);
+}
+
+/** Personal/control operations resolve shared ACL independently of child filters. */
+export function runWithoutNamespace<T>(callback: () => T): T {
+	return namespaceStorage.exit(callback);
 }
