@@ -1,4 +1,5 @@
 import type { SchemaInspector } from '@wbce-d9/schema';
+import { CONTROL_PLANE_SCHEMA } from '../virtual-namespace/tables.js';
 import { createInspector } from '@wbce-d9/schema';
 import fse from 'fs-extra';
 import type { Knex } from 'knex';
@@ -18,7 +19,8 @@ import { getActiveNamespace } from '../virtual-namespace/context.js';
 import { getHelpers } from './helpers/index.js';
 
 let database: Knex | null = null;
-let inspector: SchemaInspector | null = null;
+/** Inspectors are per schema: one process serves several namespaces. */
+const inspectors = new Map<string, SchemaInspector>();
 let databaseVersion: string | null = null;
 
 /** Virtual-namespace databases, keyed by namespace. */
@@ -196,16 +198,27 @@ function buildDatabase(searchPathOverride?: string | string[]): Knex {
 	return connection;
 }
 
+/**
+ * The schema inspector for the active namespace.
+ *
+ * Cached per schema rather than once per process: `getDatabase()` is namespace-aware, so an
+ * inspector created on the first call binds to whatever namespace happened to ask first — in
+ * practice `public` — and every later namespace then reads the wrong tables. That made
+ * `CollectionsService` resolve `schema: null` for collections that live in a namespace, which the
+ * app reads as "no real collections" and renders as an empty Content panel.
+ */
 export function getSchemaInspector(): SchemaInspector {
-	if (inspector) {
-		return inspector;
-	}
+	const key = getActiveNamespace() ?? CONTROL_PLANE_SCHEMA;
 
-	const database = getDatabase();
+	const cached = inspectors.get(key);
 
-	inspector = createInspector(database);
+	if (cached) return cached;
 
-	return inspector;
+	const created = createInspector(getDatabase());
+
+	inspectors.set(key, created);
+
+	return created;
 }
 
 /**
