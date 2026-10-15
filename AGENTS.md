@@ -1,6 +1,28 @@
 # AGENTS.md
 
-## Before any work on `hackathon`: check the namespace migration
+## Preserve the native Directus UI
+
+For changes to an existing frontend section, inspect the original Directus route,
+components, modal, actions, and relevant interaction flow **before editing it**.
+Tell the user what the existing UI does and list the smallest changes needed for
+virtual namespace data, permissions, or navigation.
+
+Keep the native page structure, components, modals, layouts, controls, styling,
+keyboard behavior, and supported functionality. Implement namespace scoping in
+the existing data and authorization paths wherever possible. Do not replace a
+native page or modal with a custom version merely to add namespace support.
+
+If a required operation cannot be supported safely by the current backend,
+identify the missing contract and leave that operation incomplete. Do not hide
+an existing capability or substitute a custom UI to conceal the gap. Review the
+finished change against the original screen and explain every intentional UI
+difference. A broader redesign requires an explicit user request.
+
+## Before application or database work on `hackathon`: check the namespace migration
+
+Documentation-only edits, including changes to this file and `RFD/`, may proceed
+without a successful migration status check. This exception does not permit
+application or database changes while the migration status is not `migrated`.
 
 This branch expects the database to be split into virtual namespaces. Check first:
 
