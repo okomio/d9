@@ -16,6 +16,9 @@ export const useNotificationsStore = defineStore({
 		unread: 0,
 	}),
 	actions: {
+		async dehydrate() {
+			this.$reset();
+		},
 		async hydrate() {
 			const userStore = useUserStore();
 

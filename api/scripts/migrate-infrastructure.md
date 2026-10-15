@@ -55,7 +55,14 @@ For each area (AAA, Tracking, Scraper, Platform_Plus, Translations, SRE, Test):
   `main` and every other namespace keep serving the area;
 - sets each role's `namespace`, and derives memberships from the role users
   already hold. Nothing new is granted: the same authority is expressed per
-  namespace.
+  namespace;
+- moves the area's **flows and operations** into its namespace, decided by the
+  collections a flow's operations reference rather than by its name. Operations
+  move **first**: `directus_operations.flow` is `ON DELETE CASCADE`, so deleting
+  the flow rows from `public` first destroys them. A flow referencing no area
+  collection, or more than one area's, stays in `main` and is reported;
+- removes `update job`: a filter on `test_collection`, which exists nowhere, that
+  posts the trigger payload to an external logger. Abandoned 2023 scaffolding.
 
 ## What it does not do
 
@@ -64,6 +71,8 @@ For each area (AAA, Tracking, Scraper, Platform_Plus, Translations, SRE, Test):
   namespace.
 - **Flows, operations and webhooks are not moved** — they stay in `main`. The
   externally-calling ones are disabled in `flows-disabled.sql`.
+- **Webhooks stay in `main`** — they are instance-wide callbacks rather than an
+  area's automation, and the one present (`log changes`) makes outbound requests.
 - **Foreign keys are not rewritten.** An area's tables keep their constraints into
   `public` (`directus_users`, `directus_files`), which still resolve because
   `public` is in every namespace's `search_path`.

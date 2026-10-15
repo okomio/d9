@@ -3,7 +3,7 @@ import { getEndpoint, moveInArray } from '@wbce-d9/utils';
 import axios from 'axios';
 import { isEqual, throttle } from 'lodash-es';
 import type { ComputedRef, Ref, WritableComputedRef } from 'vue';
-import { computed, ref, unref, watch } from 'vue';
+import { computed, onScopeDispose, ref, unref, watch } from 'vue';
 import { useCollection } from './use-collection.js';
 import { useApi } from './use-system.js';
 
@@ -73,6 +73,14 @@ export function useItems(
 	let loadingTimeout: NodeJS.Timeout | null = null;
 
 	const fetchItems = throttle(getItems, 500);
+	let disposed = false;
+
+	onScopeDispose(() => {
+		disposed = true;
+		fetchItems.cancel();
+		if (loadingTimeout) clearTimeout(loadingTimeout);
+		for (const controller of Object.values(existingRequests)) controller?.abort();
+	});
 
 	watch(
 		[collection, limit, sort, search, filter, fields, page],
@@ -122,7 +130,7 @@ export function useItems(
 	};
 
 	async function getItems() {
-		if (!endpoint.value) return;
+		if (!endpoint.value || disposed) return;
 
 		let isCurrentRequestCanceled = false;
 
@@ -172,6 +180,8 @@ export function useItems(
 				signal: existingRequests.items.signal,
 			});
 
+			if (disposed) return;
+
 			let fetchedItems = response.data.data;
 			existingRequests.items = null;
 
@@ -198,18 +208,22 @@ export function useItems(
 				page.value = 1;
 			}
 		} catch (err: any) {
+			if (disposed) return;
+
 			if (axios.isCancel(err)) {
 				isCurrentRequestCanceled = true;
 			} else {
 				error.value = err;
 			}
 		} finally {
-			if (loadingTimeout && !isCurrentRequestCanceled) {
-				clearTimeout(loadingTimeout);
-				loadingTimeout = null;
-			}
+			if (!disposed) {
+				if (loadingTimeout && !isCurrentRequestCanceled) {
+					clearTimeout(loadingTimeout);
+					loadingTimeout = null;
+				}
 
-			if (!loadingTimeout) loading.value = false;
+				if (!loadingTimeout) loading.value = false;
+			}
 		}
 	}
 
@@ -220,6 +234,7 @@ export function useItems(
 	}
 
 	async function changeManualSort({ item, to }: ManualSortData) {
+		if (disposed) return;
 		const pk = primaryKeyField.value?.field;
 		if (!pk) return;
 
@@ -233,7 +248,7 @@ export function useItems(
 	}
 
 	async function getTotalCount() {
-		if (!endpoint.value) return;
+		if (!endpoint.value || disposed) return;
 
 		try {
 			if (existingRequests.total) existingRequests.total.abort();
@@ -254,6 +269,8 @@ export function useItems(
 				signal: existingRequests.total.signal,
 			});
 
+			if (disposed) return;
+
 			const count = primaryKeyField.value
 				? Number(response.data.data[0].countDistinct[primaryKeyField.value.field])
 				: Number(response.data.data[0].count);
@@ -262,6 +279,8 @@ export function useItems(
 
 			totalCount.value = count;
 		} catch (err: any) {
+			if (disposed) return;
+
 			if (!axios.isCancel(err)) {
 				throw err;
 			}
@@ -269,7 +288,7 @@ export function useItems(
 	}
 
 	async function getItemCount() {
-		if (!endpoint.value) return;
+		if (!endpoint.value || disposed) return;
 
 		try {
 			if (existingRequests.filter) existingRequests.filter.abort();
@@ -292,6 +311,8 @@ export function useItems(
 				signal: existingRequests.filter.signal,
 			});
 
+			if (disposed) return;
+
 			const count = primaryKeyField.value
 				? Number(response.data.data[0].countDistinct[primaryKeyField.value.field])
 				: Number(response.data.data[0].count);
@@ -300,6 +321,8 @@ export function useItems(
 
 			itemCount.value = count;
 		} catch (err: any) {
+			if (disposed) return;
+
 			if (!axios.isCancel(err)) {
 				throw err;
 			}

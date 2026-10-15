@@ -140,6 +140,9 @@ export const useInsightsStore = defineStore('insightsStore', () => {
 	function dehydrate() {
 		dashboards.value = [];
 		panels.value = [];
+		variables.value = {};
+		lastLoaded.length = 0;
+		for (const key of Object.keys(refreshIntervals)) delete refreshIntervals[key];
 
 		clearCache();
 		clearEdits();

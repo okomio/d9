@@ -20,7 +20,10 @@ import { useI18n } from 'vue-i18n';
 import { defineComponent, ref, onMounted } from 'vue';
 
 import api from '@/api';
+import { destinationAfterLogin } from '@/namespaces/url';
+import { namespaceFrontendEnabled } from '@/namespaces/enabled';
 import { hydrate } from '@/hydrate';
+import { useUserStore } from '@/stores/user';
 import { useRouter } from 'vue-router';
 import { userName } from '@/utils/user-name';
 import { unexpectedError } from '@/utils/unexpected-error';
@@ -34,7 +37,7 @@ export default defineComponent({
 
 		const loading = ref(false);
 		const name = ref<string | null>(null);
-		const lastPage = ref<string | null>(null);
+		const userStore = useUserStore();
 
 		fetchUser();
 
@@ -44,7 +47,7 @@ export default defineComponent({
 			}
 		});
 
-		return { t, name, lastPage, loading, hydrateAndLogin };
+		return { t, name, loading, hydrateAndLogin };
 
 		async function fetchUser() {
 			loading.value = true;
@@ -52,7 +55,7 @@ export default defineComponent({
 			try {
 				const response = await api.get(`/users/me`, {
 					params: {
-						fields: ['email', 'first_name', 'last_name', 'last_page'],
+						fields: ['email', 'first_name', 'last_name'],
 					},
 				});
 
@@ -61,7 +64,6 @@ export default defineComponent({
 				}
 
 				name.value = userName(response.data.data);
-				lastPage.value = response.data.data.last_page;
 			} catch (err: any) {
 				unexpectedError(err);
 			} finally {
@@ -70,9 +72,14 @@ export default defineComponent({
 		}
 
 		async function hydrateAndLogin() {
-			await hydrate();
+			if (!namespaceFrontendEnabled) await hydrate();
 			const redirectQuery = router.currentRoute.value.query.redirect as string;
-			router.push(redirectQuery || lastPage.value || `/content`);
+
+			router.push(
+				destinationAfterLogin(redirectQuery) ||
+					(!namespaceFrontendEnabled ? userStore.currentUser?.last_page : null) ||
+					'/content'
+			);
 		}
 	},
 });

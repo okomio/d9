@@ -13,6 +13,8 @@ import { defineLayout } from '@wbce-d9/utils';
 import { debounce } from 'lodash';
 import { computed, ref, toRefs, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import { getNamespaceRuntime } from '@/namespaces/live';
+import { withNamespace } from '@/namespaces/url';
 import TabularActions from './actions.vue';
 import TabularOptions from './options.vue';
 import TabularLayout from './tabular.vue';
@@ -298,7 +300,13 @@ export default defineLayout<LayoutOptions, LayoutQuery>({
 						selection.value = selection.value.filter((item) => item !== primaryKey);
 					}
 				} else {
-					const next = router.resolve(`/content/${collection.value}/${encodeURIComponent(primaryKey)}`);
+					const path =
+						collection.value === 'directus_users' && router.currentRoute.value.path.startsWith('/global-admin/users')
+							? `/global-admin/users/${encodeURIComponent(primaryKey)}`
+							: `/content/${collection.value}/${encodeURIComponent(primaryKey)}`;
+
+					const namespace = getNamespaceRuntime()?.state.active?.namespaceId;
+					const next = router.resolve(namespace ? withNamespace(path, namespace) : path);
 
 					if (event.ctrlKey || event.metaKey) window.open(next.href, '_blank');
 					else router.push(next);

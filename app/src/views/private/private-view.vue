@@ -82,6 +82,7 @@ import { useTitle } from '@/composables/use-title';
 import { useWindowSize } from '@/composables/use-window-size';
 import { useAppStore } from '@/stores/app';
 import { useUserStore } from '@/stores/user';
+import { getNamespaceRuntime } from '@/namespaces/live';
 import { debounce } from 'lodash';
 import { storeToRefs } from 'pinia';
 import { computed, onMounted, provide, ref, toRefs, watch } from 'vue';
@@ -136,6 +137,8 @@ const userStore = useUserStore();
 const appStore = useAppStore();
 
 const appAccess = computed(() => {
+	const active = getNamespaceRuntime()?.state.active;
+	if (active) return active.access.canUseApp;
 	if (!userStore.currentUser) return true;
 	return userStore.currentUser?.role?.app_access || false;
 });

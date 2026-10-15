@@ -104,6 +104,7 @@ try {
 				`  ${pad(area.id, 16)} → ${pad(area.schema, 16)} ${pad(`${area.tablesMoved.length} tables moved`, 20)}` +
 					` ${area.metadataMoved.collections} collections / ${area.metadataMoved.fields} fields / ${area.metadataMoved.relations} relations` +
 					(area.metadataMoved.aliasFields ? ` / ${area.metadataMoved.aliasFields} alias field(s)` : '') +
+					(area.automationMoved?.flows ? ` / ${area.automationMoved.flows} flow(s), ${area.automationMoved.operations} op(s)` : '') +
 					`${area.registered ? '  (registered now)' : ''}`
 			);
 		}
@@ -111,10 +112,17 @@ try {
 		console.log(`\n  roles updated:      ${result.rolesUpdated}`);
 		console.log(`  memberships created: ${result.membershipsCreated}`);
 
-		const { leftovers } = await verifyMigration(database);
+		if (result.removedFlows?.length) console.log(`  flows removed:       ${result.removedFlows.join(', ')}`);
+		if (result.unmappedFlows?.length) console.log(`  flows left in main:  ${result.unmappedFlows.length}`);
+		if (result.ambiguousFlows?.length) console.log(`  flows in >1 area:    ${result.ambiguousFlows.length} (left in main)`);
+
+		const { leftovers, brokenFlows } = await verifyMigration(database);
 
 		console.log(`\n── verify ──  ${leftovers.length} area collection(s) still in public`);
 		for (const leftover of leftovers) console.log(`  ${leftover.area}: ${leftover.collection} (${leftover.reason})`);
+
+		console.log(`              ${brokenFlows.length} flow(s) without operations`);
+		for (const broken of brokenFlows.slice(0, 8)) console.log(`  ${broken.area}: ${broken.flow}`);
 	} else if (args.has('--status')) {
 		const status = await migrationStatus(database);
 
@@ -129,9 +137,10 @@ try {
 			process.exitCode = 1;
 		}
 	} else if (args.has('--verify')) {
-		const { leftovers } = await verifyMigration(database);
+		const { leftovers, brokenFlows } = await verifyMigration(database);
 
 		console.log(`area collections still in public: ${leftovers.length}`);
+		console.log(`flows without operations: ${brokenFlows.length}`);
 		for (const leftover of leftovers) console.log(`  ${leftover.area}: ${leftover.collection} (${leftover.reason})`);
 	} else {
 		printPlan(await dryRun(database));

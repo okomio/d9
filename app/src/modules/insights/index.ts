@@ -3,6 +3,7 @@ import InsightsDashboard from './routes/dashboard.vue';
 import InsightsPanelConfiguration from './routes/panel-configuration.vue';
 import { defineModule } from '@wbce-d9/utils';
 import { useInsightsStore } from '@/stores/insights';
+import { useUserStore } from '@/stores/user';
 
 export default defineModule({
 	id: 'insights',
@@ -36,8 +37,8 @@ export default defineModule({
 			],
 		},
 	],
-	preRegisterCheck(user, permissions) {
-		const admin = user.role.admin_access;
+	preRegisterCheck(_user, permissions) {
+		const admin = useUserStore().isAdmin;
 
 		if (admin) return true;
 

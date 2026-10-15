@@ -268,7 +268,7 @@ const userStore = useUserStore();
 const showManualSort = computed(() => {
 	if (!props.sortField) return false;
 
-	const isAdmin = userStore.currentUser?.role?.admin_access;
+	const isAdmin = userStore.isAdmin;
 
 	if (isAdmin) return true;
 

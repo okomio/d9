@@ -29,6 +29,16 @@ let nestedFolders: Ref<Folder[] | null> | null = null;
 let openFolders: Ref<string[] | null> | null = null;
 
 let error: Ref<any> | null = null;
+let folderGeneration = 0;
+
+export function resetFolders() {
+	folderGeneration++;
+	if (loading) loading.value = false;
+	if (folders) folders.value = null;
+	if (nestedFolders) nestedFolders.value = null;
+	if (openFolders) openFolders.value = ['root'];
+	if (error) error.value = null;
+}
 
 export function useFolders(): UsableFolders {
 	if (loading === null) loading = ref(false);
@@ -44,6 +54,7 @@ export function useFolders(): UsableFolders {
 	return { loading, folders, nestedFolders, error, fetchFolders, openFolders };
 
 	async function fetchFolders() {
+		const generation = folderGeneration;
 		if (loading === null) return;
 		if (folders === null) return;
 		if (nestedFolders === null) return;
@@ -59,12 +70,14 @@ export function useFolders(): UsableFolders {
 				},
 			});
 
-			folders.value = response.data.data;
-			nestedFolders.value = nestFolders(response.data.data);
+			if (generation === folderGeneration) {
+				folders.value = response.data.data;
+				nestedFolders.value = nestFolders(response.data.data);
+			}
 		} catch (err: any) {
-			error.value = err;
+			if (generation === folderGeneration) error.value = err;
 		} finally {
-			loading.value = false;
+			if (generation === folderGeneration) loading.value = false;
 		}
 	}
 }

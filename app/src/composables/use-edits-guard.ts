@@ -1,12 +1,20 @@
 import { ref, Ref, onBeforeMount, onBeforeUnmount, unref } from 'vue';
 import { onBeforeRouteUpdate, onBeforeRouteLeave, NavigationGuard, useRoute } from 'vue-router';
+import { getNamespaceRuntime } from '@/namespaces/live';
 
 type EditsGuardOptions = {
 	ignorePrefix?: string | Ref<string>;
 };
 
+let dirtyRegistration = 0;
+
 export function useEditsGuard(hasEdits: Ref<boolean>, opts?: EditsGuardOptions) {
 	const { path } = useRoute();
+
+	const unregister = getNamespaceRuntime()?.lifecycle.register({
+		id: `native-edits:${path}:${++dirtyRegistration}`,
+		dirty: () => hasEdits.value,
+	});
 
 	const confirmLeave = ref(false);
 	const leaveTo = ref<string | null>(null);
@@ -35,6 +43,7 @@ export function useEditsGuard(hasEdits: Ref<boolean>, opts?: EditsGuardOptions) 
 
 	onBeforeUnmount(() => {
 		window.removeEventListener('beforeunload', beforeUnload);
+		unregister?.();
 	});
 
 	onBeforeRouteUpdate(editsGuard);

@@ -74,6 +74,22 @@ export const ROLE_NAMESPACES: Record<string, string> = {
 export const EXCLUDED_TABLES = ['tracking_teams', 'tracking_tiers'];
 
 /**
+ * Flows removed rather than migrated, because they belong to no area and do nothing.
+ *
+ * `update job` is a filter on `test_collection`, which exists nowhere in the database, so it can
+ * never fire. Its only actions are posting the trigger payload to an external logger and then
+ * throwing that payload back as an error. Abandoned debug scaffolding from 2023.
+ */
+export const REMOVED_FLOWS = [
+	{ name: 'update job', reason: 'filter on a collection that does not exist; posts to an external logger' },
+];
+
+/**
+ * Webhooks deliberately stay in `public`: they are instance-wide callbacks rather than an area's
+ * automation, and the one present (`log changes`) makes outbound requests.
+ */
+
+/**
  * Grouping corrections, applied before the area walk.
  *
  * The junction is the real mis-grouping: it was filed under AAA while both its
@@ -384,6 +400,79 @@ async function moveRows(database: Knex, schema: string, table: string, where: st
 	return inserted.rowCount ?? 0;
 }
 
+/** Collections of an area, wherever their metadata currently lives. */
+async function areaCollections(database: Knex, id: string, area: string): Promise<string[]> {
+	const inPublic = await listAreaCollections(database, area);
+	const inNamespace = await database
+		.select('collection')
+		.from(`ns_${id}.directus_collections`)
+		.catch(() => [] as { collection: string }[]);
+
+	return [...new Set([...inPublic, ...inNamespace.map((row) => row.collection as string)])];
+}
+
+/**
+ * Which area each flow belongs to, decided by the collections its operations reference.
+ *
+ * Not by name: names lie — the junction table that was filed under AAA pointed at Tracking. A flow
+ * that references no area collection, or more than one area's, is reported instead of guessed.
+ */
+async function flowOwnership(
+	database: Knex,
+	collectionsByArea: Map<string, string[]>
+): Promise<{ byArea: Map<string, string[]>; unmapped: string[]; ambiguous: Array<{ name: string; areas: string[] }> }> {
+	const flows = await database.select('id', 'name').from('directus_flows');
+	const operations = await database.select('flow', 'options').from('directus_operations');
+
+	const byArea = new Map<string, string[]>();
+	const unmapped: string[] = [];
+	const ambiguous: Array<{ name: string; areas: string[] }> = [];
+
+	for (const flow of flows) {
+		const text = JSON.stringify(operations.filter((op) => op.flow === flow.id).map((op) => op.options ?? {}));
+		const areas = [...collectionsByArea.entries()]
+			.filter(([, collections]) => collections.some((collection) => text.includes(`"${collection}"`)))
+			.map(([area]) => area);
+
+		if (areas.length === 0) {
+			unmapped.push(flow.name as string);
+			continue;
+		}
+
+		if (areas.length > 1) {
+			ambiguous.push({ name: flow.name as string, areas });
+			continue;
+		}
+
+		const list = byArea.get(areas[0]!) ?? [];
+
+		list.push(flow.id as string);
+		byArea.set(areas[0]!, list);
+	}
+
+	return { byArea, unmapped, ambiguous };
+}
+
+/** Deletes the flows in REMOVED_FLOWS, operations first so no orphan is left. */
+async function removeDeadFlows(database: Knex): Promise<string[]> {
+	const rows = await database
+		.select('id', 'name')
+		.from('directus_flows')
+		.whereIn(
+			'name',
+			REMOVED_FLOWS.map((flow) => flow.name)
+		);
+
+	if (rows.length === 0) return [];
+
+	const ids = rows.map((row) => row.id as string);
+
+	await database('directus_operations').whereIn('flow', ids).delete();
+	await database('directus_flows').whereIn('id', ids).delete();
+
+	return rows.map((row) => row.name as string);
+}
+
 export type MigrationResult = {
 	areas: Array<{
 		id: string;
@@ -391,9 +480,13 @@ export type MigrationResult = {
 		registered: boolean;
 		tablesMoved: string[];
 		metadataMoved: { collections: number; fields: number; relations: number; aliasFields: number };
+		automationMoved: { flows: number; operations: number };
 	}>;
 	rolesUpdated: number;
 	membershipsCreated: number;
+	removedFlows: string[];
+	unmappedFlows: string[];
+	ambiguousFlows: Array<{ name: string; areas: string[] }>;
 };
 
 /**
@@ -409,7 +502,25 @@ export async function migrateInfrastructure(database: Knex): Promise<MigrationRe
 	await applyGroupingFixes(database);
 
 	const systemTables = await listNamespaceSystemTables(database);
-	const result: MigrationResult = { areas: [], rolesUpdated: 0, membershipsCreated: 0 };
+	const result: MigrationResult = {
+		areas: [],
+		rolesUpdated: 0,
+		membershipsCreated: 0,
+		removedFlows: [],
+		unmappedFlows: [],
+		ambiguousFlows: [],
+	};
+
+	const collectionsByArea = new Map<string, string[]>();
+
+	for (const { area, id } of AREA_NAMESPACES) {
+		collectionsByArea.set(area, await areaCollections(database, id, area));
+	}
+
+	const ownership = await flowOwnership(database, collectionsByArea);
+
+	result.unmappedFlows = ownership.unmapped;
+	result.ambiguousFlows = ownership.ambiguous;
 
 	for (const { area, id, name } of AREA_NAMESPACES) {
 		const schema = `ns_${id}`;
@@ -432,6 +543,26 @@ export async function migrateInfrastructure(database: Knex): Promise<MigrationRe
 		const publicTables = await listTables(database, CONTROL_PLANE_SCHEMA);
 		const excluded = new Set(EXCLUDED_TABLES);
 		const tablesMoved: string[] = [];
+
+		// Automation moves with the area's data. Independent of the metadata branch below, so a
+		// re-run on an already-migrated database still carries flows across.
+		const flowIds = ownership.byArea.get(area) ?? [];
+		const automationMoved = { flows: 0, operations: 0 };
+
+		if (flowIds.length) {
+			// Operations FIRST. `directus_operations.flow` is ON DELETE CASCADE, so deleting the
+			// flow rows from `public` first destroys the operations before they can be moved —
+			// which is exactly what happened on the first attempt. The namespace's operations
+			// table carries no foreign keys (the provisioner does not reproduce them), so the
+			// operations can safely arrive before the flow they belong to.
+			automationMoved.operations = await moveRows(
+				database,
+				schema,
+				'directus_operations',
+				`flow in (${inList(flowIds)})`
+			);
+			automationMoved.flows = await moveRows(database, schema, 'directus_flows', `id in (${inList(flowIds)})`);
+		}
 
 		for (const collection of collections) {
 			if (!publicTables.has(collection) || excluded.has(collection)) continue;
@@ -491,7 +622,7 @@ export async function migrateInfrastructure(database: Knex): Promise<MigrationRe
 
 			await database('directus_namespaces').where({ id }).update({ readiness: 'ready' });
 
-			result.areas.push({ id, schema, registered: !existing, tablesMoved, metadataMoved: metadata });
+			result.areas.push({ id, schema, registered: !existing, tablesMoved, metadataMoved: metadata, automationMoved });
 
 			continue;
 		}
@@ -503,6 +634,7 @@ export async function migrateInfrastructure(database: Knex): Promise<MigrationRe
 			registered: !existing,
 			tablesMoved,
 			metadataMoved: { collections: 0, fields: 0, relations: 0, aliasFields: 0 },
+			automationMoved,
 		});
 	}
 
@@ -525,6 +657,8 @@ export async function migrateInfrastructure(database: Knex): Promise<MigrationRe
 
 	result.membershipsCreated = memberships.rowCount ?? 0;
 
+	result.removedFlows = await removeDeadFlows(database);
+
 	return result;
 }
 
@@ -536,8 +670,26 @@ export async function migrateInfrastructure(database: Knex): Promise<MigrationRe
  */
 export async function verifyMigration(
 	database: Knex
-): Promise<{ leftovers: Array<{ area: string; collection: string; reason: string }> }> {
+): Promise<{
+	leftovers: Array<{ area: string; collection: string; reason: string }>;
+	brokenFlows: Array<{ area: string; flow: string }>;
+}> {
 	const leftovers: Array<{ area: string; collection: string; reason: string }> = [];
+	const brokenFlows: Array<{ area: string; flow: string }> = [];
+
+	// A flow without its operations cannot run, and says a cascade ate them mid-move.
+	for (const { id, area } of AREA_NAMESPACES) {
+		const rows = await database
+			.raw(`select f.name from ??.?? f where not exists (select 1 from ??.?? o where o.flow = f.id)`, [
+				`ns_${id}`,
+				'directus_flows',
+				`ns_${id}`,
+				'directus_operations',
+			])
+			.catch(() => ({ rows: [] }));
+
+		for (const row of rows.rows as { name: string }[]) brokenFlows.push({ area, flow: row.name });
+	}
 	const publicTables = await listTables(database, CONTROL_PLANE_SCHEMA);
 	const excluded = new Set(EXCLUDED_TABLES);
 
@@ -551,7 +703,7 @@ export async function verifyMigration(
 		}
 	}
 
-	return { leftovers };
+	return { leftovers, brokenFlows };
 }
 
 export type MigrationStatus = {

@@ -3,7 +3,10 @@ import { useUserStore } from '@/stores/user';
 import { translate } from '@/utils/translate-literal';
 import { Filter, Preset } from '@wbce-d9/types';
 import { assign, debounce, isEqual } from 'lodash';
-import { computed, ComputedRef, ref, Ref, watch } from 'vue';
+import { computed, ComputedRef, ref, Ref, watch, onScopeDispose } from 'vue';
+import { getNamespaceRuntime } from '@/namespaces/live';
+
+let presetParticipant = 0;
 
 type UsablePreset = {
 	bookmarkExists: ComputedRef<boolean>;
@@ -45,7 +48,11 @@ export function usePreset(
 	initLocalPreset();
 
 	const bookmarkSaved = ref(true);
-	const bookmarkIsMine = computed(() => localPreset.value.user === userStore.currentUser!.id);
+
+	const bookmarkIsMine = computed(
+		() =>
+			!!userStore.currentUser && 'id' in userStore.currentUser && localPreset.value.user === userStore.currentUser.id
+	);
 
 	/**
 	 * Saves the preset to the database
@@ -72,6 +79,12 @@ export function usePreset(
 		savePreset();
 	}, 450);
 
+	const unregister = getNamespaceRuntime()?.lifecycle.register({
+		id: `preset-autosave:${++presetParticipant}`,
+		pause: () => autoSave.cancel(),
+		reset: () => autoSave.cancel(),
+	});
+
 	/**
 	 * If no bookmark is present, save periodically to the DB,
 	 * otherwise update the saved status if changes where made.
@@ -95,10 +108,16 @@ export function usePreset(
 	});
 
 	// update current bookmark title when it is edited in navigation-bookmark
-	presetsStore.$subscribe(() => {
+	const unsubscribe = presetsStore.$subscribe(() => {
 		if (!bookmarkExists.value) return;
 		const newBookmark = presetsStore.getBookmark(Number(bookmark.value));
 		localPreset.value.bookmark = newBookmark?.bookmark;
+	});
+
+	onScopeDispose(() => {
+		autoSave.cancel();
+		unsubscribe();
+		unregister?.();
 	});
 
 	const layoutOptions = computed<Record<string, any>>({
@@ -217,7 +236,8 @@ export function usePreset(
 
 		if (data.id) delete data.id;
 
-		data.user = userStore.currentUser!.id;
+		if (!userStore.currentUser || !('id' in userStore.currentUser)) return;
+		data.user = userStore.currentUser.id;
 
 		return await savePreset(data);
 	}

@@ -119,7 +119,7 @@ export function useRelationPermissionsM2A(info: Ref<RelationM2A | undefined>) {
 
 function getPermsForCollection(collection: string | undefined) {
 	const userStore = useUserStore();
-	const isAdmin = userStore.currentUser?.role?.admin_access;
+	const isAdmin = userStore.isAdmin;
 
 	if (isAdmin) return getFullPerms(true);
 

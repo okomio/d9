@@ -2,9 +2,10 @@ import { router } from '@/router';
 import { usePermissionsStore } from '@/stores/permissions';
 import { useUserStore } from '@/stores/user';
 import RouterPass from '@/utils/router-passthrough';
-import { ModuleConfig } from '@wbce-d9/types';
+import { ModuleConfig, User } from '@wbce-d9/types';
 import { ShallowRef, shallowRef } from 'vue';
 import { sortBy } from 'lodash';
+import { getNamespaceRuntime } from '@/namespaces/live';
 
 export function getInternalModules(): ModuleConfig[] {
 	const modules = import.meta.glob<ModuleConfig>('./*/index.ts', { import: 'default', eager: true });
@@ -23,14 +24,21 @@ export function registerModules(modules: ModuleConfig[]): {
 		const userStore = useUserStore();
 		const permissionsStore = usePermissionsStore();
 
-		if (!userStore.currentUser) return;
+		if (!userStore.currentUser || 'share' in userStore.currentUser) return;
+		const currentUser = userStore.currentUser;
 
 		registeredModules.value = (
 			await Promise.all(
 				modules.map(async (module) => {
+					const active = getNamespaceRuntime()?.state.active;
+					// These native modules require child-scoped backend reads/actions before they are safe to expose.
+					if (active?.namespace.kind === 'virtual' && ['users', 'files', 'settings', 'activity'].includes(module.id))
+						return null;
 					if (!module.preRegisterCheck) return module;
 
-					const allowed = await module.preRegisterCheck(userStore.currentUser, permissionsStore.permissions);
+					// The extension API still declares a non-null role. Native module guards
+					// handle inherited admins through effective access, with no child role ID.
+					const allowed = await module.preRegisterCheck(currentUser as User, permissionsStore.permissions);
 
 					if (allowed) return module;
 

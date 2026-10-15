@@ -1,5 +1,6 @@
 <template>
 	<div class="module-bar-avatar">
+		<namespace-switcher v-if="namespaceFrontendEnabled" />
 		<v-badge :value="unread" :disabled="unread == 0" class="notifications-badge">
 			<v-button
 				v-tooltip.right="t('notifications')"
@@ -58,8 +59,11 @@ import { storeToRefs } from 'pinia';
 import { Ref, computed, defineComponent, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { getRootPath } from '@/utils/get-root-path';
+import { namespaceFrontendEnabled } from '@/namespaces/enabled';
+import NamespaceSwitcher from './namespace-switcher.vue';
 
 export default defineComponent({
+	components: { NamespaceSwitcher },
 	setup() {
 		const { t } = useI18n();
 
@@ -92,6 +96,7 @@ export default defineComponent({
 		const userFullName = userStore.fullName ?? undefined;
 
 		return {
+			namespaceFrontendEnabled,
 			t,
 			userFullName,
 			avatarURL,

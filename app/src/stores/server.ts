@@ -6,6 +6,7 @@ import formatTitle from '@wbce-d9/format-title';
 import { acceptHMRUpdate, defineStore } from 'pinia';
 import { computed, reactive, unref } from 'vue';
 import { useUserStore } from '@/stores/user';
+import { useLatencyStore } from '@/stores/latency';
 
 type HydrateOptions = {
 	/**
@@ -84,8 +85,13 @@ export const useServerStore = defineStore('serverStore', () => {
 	});
 
 	const hydrate = async (options?: HydrateOptions) => {
+		const started = performance.now();
 		const [serverInfoResponse, authResponse] = await Promise.all([
-			api.get(`/server/info`, { params: { limit: -1 } }),
+			api.get(`/server/info`, { params: { limit: -1 } }).then((response) => {
+				// Page tracking is skipped inside virtual namespaces, so use this existing read for latency.
+				useLatencyStore().save({ timestamp: new Date(), latency: performance.now() - started });
+				return response;
+			}),
 			api.get('/auth'),
 		]);
 
@@ -101,7 +107,10 @@ export const useServerStore = defineStore('serverStore', () => {
 
 		// set language as default locale before login
 		// or reset language for admin when they update it without having their own language set
-		if (!currentUser || (options?.isLanguageUpdated === true && !currentUser?.language)) {
+		if (
+			!currentUser ||
+			(options?.isLanguageUpdated === true && (!('language' in currentUser) || !currentUser.language))
+		) {
 			await setLanguage(unref(info)?.project?.default_language ?? 'en-US');
 		}
 

@@ -80,6 +80,18 @@ afterEach(() => {
 
 describe('actions', () => {
 	describe('hydrate', () => {
+		test('does not read child permissions using a main role when the local role is absent', async () => {
+			const userStore = useUserStore();
+			userStore.currentUser = { id: 'global-admin', role: null } as typeof userStore.currentUser;
+			const get = vi.spyOn(api, 'get');
+			const permissionsStore = usePermissionsStore();
+
+			await permissionsStore.hydrate();
+
+			expect(get).not.toHaveBeenCalled();
+			expect(permissionsStore.permissions).toEqual([]);
+		});
+
 		test('should fetch additional fields when there are dynamic variables in presets', async () => {
 			const userStore = useUserStore();
 			userStore.currentUser = mockAdminUser as any;
