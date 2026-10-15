@@ -1,52 +1,41 @@
 <template>
-	<div class="namespace-state" role="status" aria-live="polite">
-		<h1 v-if="mode === 'loading'">Loading namespace</h1>
-		<h1 v-else-if="mode === 'recover'">Namespace unavailable</h1>
-		<h1 v-else-if="mode === 'choose'">Choose a namespace</h1>
-		<h1 v-else>Namespace ready</h1>
-		<p v-if="mode === 'recover'">The selected namespace could not be loaded. Your login is still available.</p>
-		<p v-if="loading">Loading available namespaces…</p>
-		<p v-else-if="listError">Could not load available namespaces.</p>
-		<p v-else-if="mode === 'choose' && !enterable.length">{{ noAccessMessage }}</p>
-		<p v-if="switchError" role="alert">Could not switch namespace. Please try again.</p>
-		<p v-if="mode === 'landing'">Open a Directus module to continue.</p>
-		<router-link v-if="mode === 'landing' && active" :to="contentDestination">Content</router-link>
-		<div v-if="mode !== 'loading'" class="actions">
-			<button
-				v-for="choice in enterable"
-				:key="choice.namespace.id"
-				type="button"
-				:disabled="loading || listError || switching"
-				@click="enter(choice.namespace.id)"
-			>
-				{{ choice.namespace.name }}
-			</button>
-			<button v-if="mode === 'recover' && active" type="button" :disabled="loading || switching" @click="retry">
-				Retry
-			</button>
-			<button
-				v-if="mode === 'choose' || mode === 'recover'"
-				type="button"
-				:disabled="loading || switching"
-				@click="refreshChoices"
-			>
-				Refresh choices
-			</button>
-		</div>
-		<ul v-if="mode === 'choose' && unavailable.length && !loading && !listError" class="unavailable">
-			<li v-for="choice in unavailable" :key="choice.namespace.id">
-				{{ choice.namespace.name }} — {{ unavailableReason(choice) }}
-			</li>
-		</ul>
+	<div class="namespace-state">
+		<template v-if="mode === 'choose' || mode === 'recover'">
+			<v-card class="chooser-card">
+				<area-chooser
+					:choices="choices"
+					:active-id="active?.namespaceId ?? null"
+					:global-admin="runtime.state.session?.platform.isGlobalAdmin ?? false"
+					:loading="loading"
+					:busy="switching"
+					:error="listError"
+					:empty-message="noAccessMessage"
+					@refresh="refreshChoices"
+					@select="enter"
+				/>
+				<p v-if="mode === 'recover'" class="recovery-message">
+					The selected area could not be loaded. Your login is still valid.
+				</p>
+				<p v-if="switchError" class="recovery-message" role="alert">Could not switch area. Please try again.</p>
+				<v-card-actions v-if="mode === 'recover' && active">
+					<v-button secondary :disabled="loading || switching" @click="retry">Retry current area</v-button>
+				</v-card-actions>
+			</v-card>
+		</template>
+		<template v-else>
+			<h1>{{ mode === 'loading' ? 'Loading area' : 'Area ready' }}</h1>
+			<p v-if="mode === 'landing'">Open a Directus module to continue.</p>
+			<router-link v-if="mode === 'landing' && active" :to="contentDestination">Content</router-link>
+		</template>
 	</div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
+import AreaChooser from './chooser-content.vue';
 import { ensureNamespaceRuntime } from './live';
 import { isEnterableChild } from './choices';
-import type { AuthorizedNamespaceChoice } from './types';
 import { withNamespace, internalDestination } from './url';
 
 const props = defineProps<{ mode: 'loading' | 'choose' | 'recover' | 'landing' }>();
@@ -59,36 +48,25 @@ const loading = computed(() => localLoading.value || runtime.state.choicesLoadin
 const listError = computed(() => localListError.value || !!runtime.state.choicesError);
 const switchError = ref(false);
 const switching = ref(false);
+const choices = computed(() => runtime.state.choices.filter((choice) => choice.namespace.kind === 'virtual'));
 
 const contentDestination = computed(() =>
 	active.value ? withNamespace('/content', active.value.namespaceId) : '/namespace/choose'
 );
 
-const enterable = computed(() => runtime.state.choices.filter(isEnterableChild));
-const unavailable = computed(() =>
-	runtime.state.choices.filter((choice) => choice.namespace.kind === 'virtual' && !isEnterableChild(choice))
-);
-
-function unavailableReason(choice: AuthorizedNamespaceChoice) {
-	if (choice.namespace.readiness === 'provisioning') return 'Provisioning';
-	if (choice.namespace.readiness === 'failed') return 'Unavailable';
-	return choice.access.source === 'inherited' ? 'App access unavailable' : 'API access only';
-}
-
 const noAccessMessage = computed(() => {
-	const virtual = runtime.state.choices.filter((choice) => choice.namespace.kind === 'virtual');
-	if (virtual.some((choice) => choice.access.source === 'inherited' && !choice.access.canUseApp))
-		return 'Your Global Admin account cannot currently open these namespaces. Ask an administrator to check app access.';
-	if (virtual.some((choice) => choice.namespace.readiness === 'ready' && !choice.access.canUseApp))
-		return 'Your available namespace has API access only.';
-	if (virtual.some((choice) => choice.namespace.readiness !== 'ready'))
-		return 'No virtual namespace is ready to enter yet.';
-	return 'You do not have access to a virtual namespace.';
+	if (choices.value.some((choice) => choice.access.source === 'inherited' && !choice.access.canUseApp))
+		return 'Your Global Admin account cannot currently open these areas. Ask an administrator to check app access.';
+	if (choices.value.some((choice) => choice.namespace.readiness === 'ready' && !choice.access.canUseApp))
+		return 'Your available area has API access only.';
+	if (choices.value.some((choice) => choice.namespace.readiness !== 'ready')) return 'No area is ready to enter yet.';
+	return 'No areas available. Ask a global admin to grant you a role.';
 });
 
 async function refreshChoices() {
 	localLoading.value = true;
 	localListError.value = false;
+
 	try {
 		const hadSession = !!runtime.state.session;
 		await runtime.ensureSession();
@@ -105,11 +83,12 @@ async function enter(namespaceId: string) {
 		loading.value ||
 		listError.value ||
 		switching.value ||
-		!enterable.value.some((choice) => choice.namespace.id === namespaceId)
+		!choices.value.some((choice) => choice.namespace.id === namespaceId && isEnterableChild(choice))
 	)
 		return;
 	switching.value = true;
 	switchError.value = false;
+
 	try {
 		const result = await runtime.coordinator.requestSwitch({ namespaceId, source: 'picker', destination: '/content' });
 		if (result.status === 'blocked') switchError.value = true;
@@ -147,28 +126,17 @@ onMounted(() => {
 	min-height: 100%;
 	display: grid;
 	place-content: center;
-	gap: 16px;
+	padding: 32px;
 	text-align: center;
-	padding: 40px;
 }
-.actions {
-	display: flex;
-	gap: 12px;
-	justify-content: center;
-	flex-wrap: wrap;
-}
-button {
-	padding: 10px 16px;
-	border: 1px solid currentColor;
-	border-radius: 4px;
-}
-button:disabled {
-	opacity: 0.5;
-	cursor: default;
-}
-.unavailable {
-	list-style: none;
-	padding: 0;
+
+.recovery-message {
+	padding: 0 32px 16px;
 	color: var(--foreground-subdued);
+}
+
+.chooser-card {
+	--v-card-min-width: min(680px, calc(100vw - 64px));
+	--v-card-max-width: min(680px, calc(100vw - 64px));
 }
 </style>

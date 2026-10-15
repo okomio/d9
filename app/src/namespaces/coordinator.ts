@@ -21,6 +21,8 @@ export interface TokenAuthority {
 export interface NamespaceNavigation {
 	commit(intent: SwitchIntent): Promise<void>;
 	finish(destination: string): Promise<void>;
+	/** Finalize a validated cross-area switch with a browser page load. */
+	reload?(destination: string): Promise<void>;
 }
 export interface CoordinatorOptions {
 	state: NamespaceState;
@@ -117,7 +119,11 @@ export function createNamespaceCoordinator(options: CoordinatorOptions): Namespa
 				ledger.openAdmission();
 				// Native module landing routes can redirect to a collection. The target
 				// must be ready before that second router guard runs.
-				await navigation.finish(destination);
+				// An existing CMS view may retain state outside registered stores. A fresh
+				// document after the guarded switch gives every native module a clean start.
+				if (source && ['picker', 'platform', 'history', 'deep-link'].includes(intent.source) && navigation.reload)
+					await navigation.reload(destination);
+				else await navigation.finish(destination);
 				check();
 				return { status: 'ready', destination };
 			} catch (error) {

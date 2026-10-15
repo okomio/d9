@@ -8,6 +8,12 @@ target landing such as `/content`; C7's **Enter** action should call the same co
 Neither surface should mint or install a token itself. An administrative namespace filter must
 use its own URL key; `ns` selects the active content context.
 
+The admin UI labels virtual namespaces **areas**. The persistent rail button above Notifications
+opens the native chooser dialog; project and active area remain visible in the header. Once the
+coordinator has guarded and validated a change from an active area, its final navigation performs
+a full browser page load at the target `?ns=` URL. Initial bootstrap does not reload again.
+The static chooser and recovery routes reuse the same card list when no protected shell exists.
+
 Enable this frontend with `VITE_VIRTUAL_NAMESPACES_ENABLED=true` in a build or dev session only
 when the backend has `VIRTUAL_NAMESPACES_ENABLED=true`, registry migrations, and ready children.
 The frontend flag defaults off because the backend does not yet expose a reliable feature flag

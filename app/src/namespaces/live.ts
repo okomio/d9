@@ -8,6 +8,7 @@ import { resetContentNavigation } from '@/modules/content/composables/use-naviga
 import { resetUserNavigation } from '@/modules/users/composables/use-navigation';
 import { resetTranslationStrings } from '@/composables/use-translation-strings';
 import { resetScopedLocaleMessages } from '@/lang';
+import { getRootPath } from '@/utils/get-root-path';
 import { backendNamespaceAdapter } from './backend';
 import { withNamespace, internalDestination } from './url';
 import { createNamespaceNavigation } from './navigation';
@@ -31,6 +32,7 @@ export function ensureNamespaceRuntime(): NamespaceRuntime {
 	navigation = createNamespaceNavigation({
 		replace: (destination) => router.replace(destination),
 		push: (destination) => router.push(destination),
+		pageReload: (destination) => window.location.replace(`${getRootPath()}admin${destination}`),
 	});
 
 	runtime = createNamespaceRuntime({

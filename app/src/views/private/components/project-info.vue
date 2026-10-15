@@ -3,7 +3,7 @@
 		<latency-indicator />
 		<div class="name-container">
 			<v-text-overflow placement="right" class="name" :text="name" />
-			<namespace-switcher v-if="namespaceFrontendEnabled" />
+			<v-text-overflow v-if="namespaceFrontendEnabled" placement="right" class="descriptor" :text="activeAreaName" />
 			<v-text-overflow v-else-if="descriptor" placement="right" class="descriptor" :text="descriptor" />
 		</div>
 	</div>
@@ -12,19 +12,20 @@
 <script lang="ts">
 import { defineComponent, computed } from 'vue';
 import LatencyIndicator from './latency-indicator.vue';
-import NamespaceSwitcher from './namespace-switcher.vue';
 import { useServerStore } from '@/stores/server';
 import { namespaceFrontendEnabled } from '@/namespaces/enabled';
+import { getNamespaceRuntime } from '@/namespaces/live';
 
 export default defineComponent({
-	components: { LatencyIndicator, NamespaceSwitcher },
+	components: { LatencyIndicator },
 	setup() {
 		const serverStore = useServerStore();
 
 		const name = computed(() => serverStore.info?.project?.project_name);
 		const descriptor = computed(() => serverStore.info?.project?.project_descriptor);
+		const activeAreaName = computed(() => getNamespaceRuntime()?.state.active?.namespace.name ?? '');
 
-		return { name, descriptor, namespaceFrontendEnabled };
+		return { name, descriptor, activeAreaName, namespaceFrontendEnabled };
 	},
 });
 </script>

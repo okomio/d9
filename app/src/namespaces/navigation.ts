@@ -5,6 +5,7 @@ import { internalDestination, withNamespace } from './url';
 export interface NavigationPort {
 	replace(destination: string): Promise<unknown>;
 	push?(destination: string): Promise<unknown>;
+	pageReload?(destination: string): void;
 }
 /** One-use exact route permit; UI callers cannot skip the switch transaction. */
 export function createNamespaceNavigation(port: NavigationPort) {
@@ -59,6 +60,16 @@ export function createNamespaceNavigation(port: NavigationPort) {
 			target = null;
 		},
 	};
+
+	if (port.pageReload) {
+		navigation.reload = async (destination: string) => {
+			if (!target) throw new Error('No navigation transaction');
+			const finalDestination = withNamespace(destination, target);
+			port.pageReload?.(finalDestination);
+			historyGuard = false;
+			target = null;
+		};
+	}
 
 	return {
 		...navigation,

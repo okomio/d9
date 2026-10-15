@@ -57,6 +57,20 @@ function setup() {
 }
 
 describe('namespace coordinator and real settlement ledger', () => {
+	it('reloads only after a validated switch from an active area', async () => {
+		const x = setup();
+		const reload = vi.fn(async () => {});
+		Object.assign(x.navigation, { reload });
+
+		await x.coordinator.requestSwitch({ namespaceId: 'main', source: 'bootstrap' });
+		expect(reload).not.toHaveBeenCalled();
+		expect(x.navigation.finish).toHaveBeenCalledTimes(1);
+
+		await x.coordinator.requestSwitch({ namespaceId: 'tracking', source: 'picker', destination: '/content' });
+		expect(reload).toHaveBeenCalledWith('/namespace');
+		expect(x.navigation.finish).toHaveBeenCalledTimes(1);
+	});
+
 	it('retains source drafts and token on Stay, including query-only switches', async () => {
 		const x = setup();
 		await x.coordinator.requestSwitch({ namespaceId: 'main', source: 'bootstrap' });

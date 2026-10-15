@@ -79,4 +79,16 @@ describe('namespace URL identity and redirect safety', () => {
 		expect(replace).not.toHaveBeenCalled();
 		expect(push).not.toHaveBeenCalled();
 	});
+
+	it('loads the validated target URL after the loading route has replaced the source view', async () => {
+		const push = vi.fn(async () => {});
+		const pageReload = vi.fn();
+		const navigation = createNamespaceNavigation({ replace: async () => {}, push, pageReload });
+
+		await navigation.commit({ namespaceId: 'aaa', source: 'picker', destination: '/content' });
+		await navigation.reload?.('/content');
+
+		expect(push).toHaveBeenCalledWith('/namespace/loading?next=%2Fcontent&ns=aaa');
+		expect(pageReload).toHaveBeenCalledWith('/content?ns=aaa');
+	});
 });
