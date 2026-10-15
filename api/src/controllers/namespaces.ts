@@ -15,6 +15,7 @@ import {
 	updateMemberRole,
 } from '../virtual-namespace/members.js';
 import { getNamespace } from '../virtual-namespace/registry.js';
+import { hasGlobalAuthority } from '../virtual-namespace/authority.js';
 
 const router = Router();
 
@@ -39,7 +40,7 @@ async function assertCanManage(req: Request, namespaceId: string): Promise<void>
 
 	const allowed = await canManageMembers(
 		database,
-		{ user: accountability.user, admin: accountability.admin === true },
+		{ user: accountability.user, admin: hasGlobalAuthority(accountability) },
 		namespaceId
 	);
 
@@ -76,7 +77,7 @@ router.get(
 		const { data, default: defaultNamespace } = await listAccessibleNamespaces(getDatabase(), {
 			user: accountability.user,
 			role: accountability.role ?? null,
-			admin: accountability.admin === true,
+			admin: hasGlobalAuthority(accountability),
 			app: accountability.app === true,
 		});
 

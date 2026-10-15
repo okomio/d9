@@ -5,6 +5,7 @@ import { ItemsService } from './items.js';
 import { PermissionsService } from './permissions.js';
 import { PresetsService } from './presets.js';
 import { UsersService } from './users.js';
+import { assertNamespaceOwnedWrite } from '../virtual-namespace/authority.js';
 import { getActiveNamespaceId, getActiveNamespaceKind } from '../virtual-namespace/context.js';
 import { MEMBERSHIP_TABLE } from '../virtual-namespace/membership.js';
 
@@ -123,6 +124,7 @@ export class RolesService extends ItemsService {
 	}
 
 	override async deleteMany(keys: PrimaryKey[]): Promise<PrimaryKey[]> {
+		await assertNamespaceOwnedWrite(this.knex, this.collection, this.accountability, undefined, keys);
 		const opts: MutationOptions = {};
 		const virtualNamespaceId = getActiveNamespaceKind() === 'virtual' ? getActiveNamespaceId() : undefined;
 

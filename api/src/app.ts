@@ -56,6 +56,7 @@ import cors from './middleware/cors.js';
 import errorHandler from './middleware/error-handler.js';
 import extractToken from './middleware/extract-token.js';
 import getPermissions from './middleware/get-permissions.js';
+import { parseGraphQL } from './middleware/graphql.js';
 import rateLimiterGlobal from './middleware/rate-limiter-global.js';
 import rateLimiter from './middleware/rate-limiter-ip.js';
 import sanitizeQuery from './middleware/sanitize-query.js';
@@ -242,6 +243,10 @@ export default async function createApp(): Promise<express.Application> {
 	app.use(checkIP);
 
 	app.use(sanitizeQuery);
+
+	// Namespace selection must classify system auth/identity operations before
+	// cache, schema and permission hydration. Reuse the normal transport parser.
+	app.use('/graphql', parseGraphQL);
 
 	if (isVirtualNamespaceEnabled()) {
 		app.use(virtualNamespace());

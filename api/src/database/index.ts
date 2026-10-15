@@ -1,5 +1,4 @@
 import type { SchemaInspector } from '@wbce-d9/schema';
-import { CONTROL_PLANE_SCHEMA } from '../virtual-namespace/tables.js';
 import { createInspector } from '@wbce-d9/schema';
 import fse from 'fs-extra';
 import type { Knex } from 'knex';
@@ -19,8 +18,14 @@ import { getActiveNamespace } from '../virtual-namespace/context.js';
 import { getHelpers } from './helpers/index.js';
 
 let database: Knex | null = null;
-/** Inspectors are per schema: one process serves several namespaces. */
-const inspectors = new Map<string, SchemaInspector>();
+/**
+ * Schema inspectors, keyed by the database handle they describe.
+ *
+ * Keyed by handle rather than by namespace name, so the cache cannot return an inspector for a
+ * different connection than the one it will query. That also covers a namespace database used
+ * outside namespace context, as deferred work does.
+ */
+const inspectors = new WeakMap<Knex, SchemaInspector>();
 let databaseVersion: string | null = null;
 
 /** Virtual-namespace databases, keyed by namespace. */
@@ -201,24 +206,22 @@ function buildDatabase(searchPathOverride?: string | string[]): Knex {
 /**
  * The schema inspector for the active namespace.
  *
- * Cached per schema rather than once per process: `getDatabase()` is namespace-aware, so an
- * inspector created on the first call binds to whatever namespace happened to ask first — in
- * practice `public` — and every later namespace then reads the wrong tables. That made
+ * Cached rather than created per call: `getDatabase()` is namespace-aware, so an inspector created
+ * once for the process binds to whatever namespace happened to ask first — in practice `public` —
+ * and every later namespace then reads the wrong tables. That made
  * `CollectionsService` resolve `schema: null` for collections that live in a namespace, which the
  * app reads as "no real collections" and renders as an empty Content panel.
  */
 export function getSchemaInspector(): SchemaInspector {
-	const key = getActiveNamespace() ?? CONTROL_PLANE_SCHEMA;
+	const database = getDatabase();
+	const existing = inspectors.get(database);
 
-	const cached = inspectors.get(key);
+	if (existing) return existing;
 
-	if (cached) return cached;
+	const inspector = createInspector(database);
+	inspectors.set(database, inspector);
 
-	const created = createInspector(getDatabase());
-
-	inspectors.set(key, created);
-
-	return created;
+	return inspector;
 }
 
 /**

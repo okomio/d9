@@ -5,6 +5,8 @@ import { systemCollectionRows } from '../database/system-data/collections/index.
 import emitter from '../emitter.js';
 import { ForbiddenException, InvalidPayloadException } from '../exceptions/index.js';
 import type { AbstractServiceOptions, PrimaryKey } from '../types/index.js';
+import { flushCaches } from '../cache.js';
+import { hasGlobalAuthority } from '../virtual-namespace/authority.js';
 
 export class UtilsService {
 	knex: Knex;
@@ -15,6 +17,11 @@ export class UtilsService {
 		this.knex = options.knex || getDatabase();
 		this.accountability = options.accountability || null;
 		this.schema = options.schema;
+	}
+
+	async clearCache(): Promise<void> {
+		if (!hasGlobalAuthority(this.accountability)) throw new ForbiddenException();
+		await flushCaches(true);
 	}
 
 	async sort(collection: string, { item, to }: { item: PrimaryKey; to: PrimaryKey }): Promise<void> {

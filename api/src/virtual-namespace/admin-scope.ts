@@ -13,7 +13,9 @@
  * the effective-capability split D04 describes; this is the edge restriction that
  * closes the escalation meanwhile.
  *
- * Shared user records are read through namespace-specific membership endpoints.
+ * The service layer independently enforces shared-write and namespace ownership
+ * rules so alternate transports and nested writes have the same boundary, and
+ * shared user records are read through namespace-specific membership endpoints.
  */
 
 /** Writes that are never available to a namespace-scoped admin. */
@@ -31,7 +33,7 @@ const NAMESPACE_OWNED = [
 function isRead(method: string): boolean {
 	const upper = method.toUpperCase();
 
-	return upper === 'GET' || upper === 'HEAD';
+	return upper === 'GET' || upper === 'HEAD' || upper === 'SEARCH';
 }
 
 function isSameOrChildPath(path: string, prefix: string): boolean {
