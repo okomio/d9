@@ -24,10 +24,12 @@ The backend adapter uses `GET /namespaces`, `POST /namespaces/:namespace/token`,
 Access tokens remain in memory. `?ns=<stable-id>` is the frontend URL hint. The static
 `/namespace/loading`, `/namespace/choose`, `/namespace/recover`, and `/namespace` routes exist
 before dynamic Directus modules are registered. The existing native Content module is hydrated
-under the selected token. Native Users, Files, and Settings modules are withheld in virtual
-namespaces until child-scoped backend reads and writes exist; the native Activity module is
-also withheld until the shared audit feed is filtered by namespace. Their source components
-are intact.
+under the selected token. Settings keeps its native screens: namespace-owned Data Model, local
+Roles & Permissions, Presets, Flows and Webhooks are available to effective namespace admins;
+shared Project Settings shows a contract notice and Translation Strings are read-only for child admins pending D09.
+Native Users and Files are withheld in virtual namespaces until child-scoped backend reads and
+writes exist; the native Activity module is also withheld until the shared audit feed is filtered
+by namespace. See `RFD/frontend/virtual-namespace-settings-status.md` for the remaining Settings gaps.
 
 Views and extensions can register dirty, pause, reset, resume, and dispose hooks through
 `runtime.lifecycle`. `useSystem()` provides `{ getRuntime }` under the `namespace-runtime`

@@ -1,4 +1,5 @@
 import api from '@/api';
+import { getNamespaceRuntime } from '@/namespaces/live';
 import { defineModule } from '@wbce-d9/utils';
 import { useCollectionsStore } from '@/stores/collections';
 import { useFieldsStore } from '@/stores/fields';
@@ -23,6 +24,7 @@ import FlowsOverview from './routes/flows/overview.vue';
 import FlowsDetail from './routes/flows/flow.vue';
 import FlowOperationDetail from './routes/flows/components/operation-detail.vue';
 import TranslationStringsCollection from './routes/translation-strings/collection.vue';
+import { isChildRolePermissionSupported, isSharedControlPlaneCollection } from './shared-schema';
 
 export default defineModule({
 	id: 'settings',
@@ -67,6 +69,12 @@ export default defineModule({
 					path: ':collection',
 					component: Fields,
 					async beforeEnter(to) {
+						// Shared control-plane metadata is not a child schema edit.
+						if (
+							getNamespaceRuntime()?.state.active?.namespace.kind === 'virtual' &&
+							isSharedControlPlaneCollection(to.params.collection as string)
+						)
+							return '/settings/data-model';
 						const collectionsStore = useCollectionsStore();
 						const info = collectionsStore.getCollection(to.params.collection as string);
 
@@ -122,6 +130,9 @@ export default defineModule({
 				{
 					path: 'public',
 					component: RolesPublicItem,
+					beforeEnter() {
+						if (getNamespaceRuntime()?.state.active?.namespace.kind === 'virtual') return '/settings/roles';
+					},
 					props: true,
 					children: [
 						{
@@ -140,6 +151,18 @@ export default defineModule({
 					children: [
 						{
 							path: ':permissionKey',
+							async beforeEnter(to) {
+								if (getNamespaceRuntime()?.state.active?.namespace.kind !== 'virtual') return;
+
+								try {
+									const response = await api.get(`/permissions/${to.params.permissionKey}`);
+									if (isChildRolePermissionSupported(response.data.data.collection)) return;
+								} catch {
+									// The native item route handles missing permissions after redirect.
+								}
+
+								return `/settings/roles/${to.params.primaryKey}`;
+							},
 							components: {
 								permissionsDetail: RolesPermissionsDetail,
 							},
@@ -236,6 +259,8 @@ export default defineModule({
 		},
 	],
 	preRegisterCheck: (user) => {
+		const active = getNamespaceRuntime()?.state.active;
+		if (active) return active.access.canUseApp && active.access.isNamespaceAdmin;
 		return user.role.admin_access === true;
 	},
 });

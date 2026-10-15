@@ -5,7 +5,7 @@
 			dense
 			clickable
 			:class="{ hidden: collection.meta?.hidden }"
-			:to="collection.schema ? `/settings/data-model/${collection.collection}` : undefined"
+			:to="collection.schema && !isSharedSystemCollection ? `/settings/data-model/${collection.collection}` : undefined"
 			@click.self="!collection.schema ? $emit('editCollection', collection) : null"
 		>
 			<v-list-item-icon>
@@ -65,6 +65,8 @@ import { useCollectionsStore } from '@/stores/collections';
 import { DeepPartial } from '@wbce-d9/types';
 import { useI18n } from 'vue-i18n';
 import { unexpectedError } from '@/utils/unexpected-error';
+import { getNamespaceRuntime } from '@/namespaces/live';
+import { isSharedControlPlaneCollection } from '../../../../shared-schema';
 
 export default defineComponent({
 	name: 'CollectionItem',
@@ -85,6 +87,10 @@ export default defineComponent({
 	},
 	emits: ['setNestedSort', 'editCollection'],
 	setup(props, { emit }) {
+		const isSharedSystemCollection =
+			getNamespaceRuntime()?.state.active?.namespace.kind === 'virtual' &&
+			isSharedControlPlaneCollection(props.collection.collection);
+
 		const collectionsStore = useCollectionsStore();
 		const { t } = useI18n();
 
@@ -121,6 +127,7 @@ export default defineComponent({
 		const collapseLoading = ref(false);
 
 		return {
+			isSharedSystemCollection,
 			collapseIcon,
 			onGroupSortChange,
 			nestedCollections,

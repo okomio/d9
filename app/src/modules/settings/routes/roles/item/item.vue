@@ -9,7 +9,11 @@
 			</v-button>
 		</template>
 		<template #actions>
-			<v-dialog v-if="[1, 2].includes(+primaryKey) === false" v-model="confirmDelete" @esc="confirmDelete = false">
+			<v-dialog
+				v-if="!isVirtualNamespace && [1, 2].includes(+primaryKey) === false"
+				v-model="confirmDelete"
+				@esc="confirmDelete = false"
+			>
 				<template #activator="{ on }">
 					<v-button
 						v-if="primaryKey !== lastAdminRoleId"
@@ -78,6 +82,7 @@
 			<v-form
 				v-model="edits"
 				collection="directus_roles"
+				:fields="roleFields"
 				:primary-key="primaryKey"
 				:loading="loading"
 				:initial-values="item"
@@ -118,6 +123,8 @@ import { useUserStore } from '@/stores/user';
 import RevisionsDrawerDetail from '@/views/private/components/revisions-drawer-detail.vue';
 import UsersInvite from '@/views/private/components/users-invite.vue';
 import { useRouter } from 'vue-router';
+import { useCollection } from '@wbce-d9/composables';
+import { getNamespaceRuntime } from '@/namespaces/live';
 import SettingsNavigation from '../../../components/navigation.vue';
 import PermissionsOverview from './components/permissions-overview.vue';
 import RoleInfoSidebarDetail from './components/role-info-sidebar-detail.vue';
@@ -149,13 +156,19 @@ export default defineComponent({
 		const serverStore = useServerStore();
 		const userInviteModalActive = ref(false);
 		const { primaryKey } = toRefs(props);
+		const isVirtualNamespace = getNamespaceRuntime()?.state.active?.namespace.kind === 'virtual';
+		const { fields } = useCollection('directus_roles');
+
+		const roleFields = computed(() =>
+			isVirtualNamespace ? fields.value.filter((field) => !['users', 'namespace'].includes(field.field)) : fields.value
+		);
 
 		const revisionsDrawerDetailRef = ref<InstanceType<typeof RevisionsDrawerDetail> | null>(null);
 
 		const { edits, hasEdits, item, saving, loading, error, save, remove, deleting, isBatch } = useItem(
 			ref('directus_roles'),
 			primaryKey,
-			{ deep: { users: { _limit: 0 } } }
+			isVirtualNamespace ? undefined : { deep: { users: { _limit: 0 } } }
 		);
 
 		const confirmDelete = ref(false);
@@ -185,6 +198,7 @@ export default defineComponent({
 		const { confirmLeave, leaveTo } = useEditsGuard(hasEdits);
 
 		const canInviteUsers = computed(() => {
+			if (isVirtualNamespace) return false;
 			if (serverStore.auth.disableDefault === true) return false;
 
 			const isAdmin = !!userStore.currentUser?.role?.admin_access;
@@ -221,6 +235,8 @@ export default defineComponent({
 			leaveTo,
 			discardAndLeave,
 			canInviteUsers,
+			isVirtualNamespace,
+			roleFields,
 			revisionsDrawerDetailRef,
 		};
 
@@ -233,13 +249,13 @@ export default defineComponent({
 
 		async function saveAndStay() {
 			await save();
-			await userStore.hydrate();
+			if (!isVirtualNamespace) await userStore.hydrate();
 			revisionsDrawerDetailRef.value?.refresh?.();
 		}
 
 		async function saveAndQuit() {
 			await save();
-			await userStore.hydrate();
+			if (!isVirtualNamespace) await userStore.hydrate();
 			router.push(`/settings/roles`);
 		}
 

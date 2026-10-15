@@ -66,6 +66,7 @@ import { useRouter } from 'vue-router';
 import { unexpectedError } from '@/utils/unexpected-error';
 import { translate } from '@/utils/translate-object-values';
 import { Role } from '@wbce-d9/types';
+import { getNamespaceRuntime } from '@/namespaces/live';
 
 type RoleItem = Partial<Role> & {
 	count?: number;
@@ -135,34 +136,50 @@ export default defineComponent({
 			loading.value = true;
 
 			try {
+				const active = getNamespaceRuntime()?.state.active;
+				const namespaceId = active?.namespace.kind === 'virtual' ? active.namespaceId : null;
+
 				const response = await api.get(`/roles`, {
 					params: {
 						limit: -1,
-						fields: ['id', 'name', 'description', 'icon', 'admin_access', 'users'],
-						deep: {
-							users: {
-								_aggregate: { count: 'id' },
-								_groupBy: ['role'],
-								_sort: 'role',
-								_limit: -1,
-							},
-						},
+						fields: namespaceId
+							? ['id', 'name', 'description', 'icon', 'admin_access']
+							: ['id', 'name', 'description', 'icon', 'admin_access', 'users'],
+						deep: namespaceId
+							? undefined
+							: {
+									users: {
+										_aggregate: { count: 'id' },
+										_groupBy: ['role'],
+										_sort: 'role',
+										_limit: -1,
+									},
+							  },
 						sort: 'name',
 					},
 				});
 
+				const roleCounts: Record<string, number> = namespaceId
+					? (await api.get(`/namespaces/${encodeURIComponent(namespaceId)}/members`, { params: { limit: 0 } })).data
+							.meta.role_counts
+					: {};
+
 				roles.value = [
-					{
-						public: true,
-						name: t('public_label'),
-						icon: 'public',
-						description: t('public_description'),
-						id: 'public',
-					},
+					...(!namespaceId
+						? [
+								{
+									public: true,
+									name: t('public_label'),
+									icon: 'public',
+									description: t('public_description'),
+									id: 'public',
+								},
+						  ]
+						: []),
 					...response.data.data.map((role: any) => {
 						return {
 							...translate(role),
-							count: role.users[0]?.count.id || 0,
+							count: namespaceId ? roleCounts[role.id] ?? 0 : role.users?.[0]?.count.id || 0,
 						};
 					}),
 				];

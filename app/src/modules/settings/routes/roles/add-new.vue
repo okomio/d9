@@ -37,6 +37,8 @@ import { useRouter } from 'vue-router';
 import { appRecommendedPermissions } from './app-permissions';
 import { unexpectedError } from '@/utils/unexpected-error';
 import { useDialogRoute } from '@/composables/use-dialog-route';
+import { getNamespaceRuntime } from '@/namespaces/live';
+import { isChildRolePermissionSupported } from '../../shared-schema';
 
 export default defineComponent({
 	setup() {
@@ -72,10 +74,15 @@ export default defineComponent({
 					if (appAccess.value === true && adminAccess.value === false) {
 						await api.post(
 							'/permissions',
-							appRecommendedPermissions.map((permission) => ({
-								...permission,
-								role: roleResponse.data.data.id,
-							}))
+							appRecommendedPermissions
+								.filter((permission) => {
+									if (getNamespaceRuntime()?.state.active?.namespace.kind !== 'virtual') return true;
+									return isChildRolePermissionSupported(permission.collection ?? '');
+								})
+								.map((permission) => ({
+									...permission,
+									role: roleResponse.data.data.id,
+								}))
 						);
 					}
 

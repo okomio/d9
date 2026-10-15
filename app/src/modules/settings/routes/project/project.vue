@@ -8,7 +8,15 @@
 		</template>
 
 		<template #actions>
-			<v-button v-tooltip.bottom="t('save')" icon rounded :disabled="!hasEdits" :loading="saving" @click="save">
+			<v-button
+				v-if="canEditSharedSettings"
+				v-tooltip.bottom="t('save')"
+				icon
+				rounded
+				:disabled="!hasEdits"
+				:loading="saving"
+				@click="save"
+			>
 				<v-icon name="check" />
 			</v-button>
 		</template>
@@ -18,7 +26,16 @@
 		</template>
 
 		<div class="settings">
-			<v-form v-model="edits" :initial-values="initialValues" :fields="fields" :primary-key="1" />
+			<v-notice v-if="!canEditSharedSettings" type="info">
+				Project settings are shared across namespaces. Editing requires Global Admin access.
+			</v-notice>
+			<v-form
+				v-if="canEditSharedSettings"
+				v-model="edits"
+				:initial-values="initialValues"
+				:fields="fields"
+				:primary-key="1"
+			/>
 		</div>
 
 		<template #sidebar>
@@ -52,6 +69,8 @@ import { clone } from 'lodash';
 import { useShortcut } from '@/composables/use-shortcut';
 import { useEditsGuard } from '@/composables/use-edits-guard';
 import { useRouter } from 'vue-router';
+import { getNamespaceRuntime } from '@/namespaces/live';
+import { canManagePlatformResource } from '@/namespaces/capabilities';
 
 export default defineComponent({
 	components: { SettingsNavigation, ProjectInfoSidebarDetail },
@@ -62,6 +81,11 @@ export default defineComponent({
 
 		const settingsStore = useSettingsStore();
 		const serverStore = useServerStore();
+
+		const canEditSharedSettings = computed(() => {
+			const active = getNamespaceRuntime()?.state.active;
+			return !active || canManagePlatformResource(active.platform, 'settings');
+		});
 
 		const { fields } = useCollection('directus_settings');
 
@@ -74,7 +98,7 @@ export default defineComponent({
 		const saving = ref(false);
 
 		useShortcut('meta+s', () => {
-			if (hasEdits.value) save();
+			if (canEditSharedSettings.value && hasEdits.value) save();
 		});
 
 		const { confirmLeave, leaveTo } = useEditsGuard(hasEdits);
@@ -85,6 +109,7 @@ export default defineComponent({
 			initialValues,
 			edits,
 			hasEdits,
+			canEditSharedSettings,
 			saving,
 			confirmLeave,
 			leaveTo,
@@ -93,7 +118,7 @@ export default defineComponent({
 		};
 
 		async function save() {
-			if (edits.value === null) return;
+			if (!canEditSharedSettings.value || edits.value === null) return;
 			saving.value = true;
 			await settingsStore.updateSettings(edits.value);
 			await serverStore.hydrate({ isLanguageUpdated: 'default_language' in edits.value });
