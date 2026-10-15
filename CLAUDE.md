@@ -4,6 +4,10 @@
 
 d9 is an open-source fork of Directus 9 (GPLv3), focused on performance and EU regulatory compliance. Maintained by La Webcapsule.
 
+## Agent instructions
+
+See [AGENTS.md](AGENTS.md). On the `hackaton` branch it carries a mandatory first step: check `node scripts/migrate-infrastructure.mjs --status` before starting any work.
+
 ## Skills & Contributing
 
 ### Install the d9-skills plugin

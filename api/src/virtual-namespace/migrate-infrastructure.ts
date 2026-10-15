@@ -522,3 +522,85 @@ export async function verifyMigration(
 
 	return { leftovers };
 }
+
+export type MigrationStatus = {
+	state: 'not-ready' | 'needs-migration' | 'migrated' | 'partial';
+	detail: string;
+};
+
+/**
+ * Whether this database has already been through the migration.
+ *
+ * Answered from the database's shape rather than from a marker file, so it stays
+ * true no matter who ran what. Deliberately not answered from the area walk: an
+ * area's metadata moves *into* the namespace, so once an area has migrated there
+ * is nothing left in `public` to walk. Registered namespaces, the tables still in
+ * `public`, and the schemas those namespaces actually have, are all readable.
+ *
+ * The exit-code contract agents depend on lives in the runner, not here.
+ */
+export async function migrationStatus(database: Knex): Promise<MigrationStatus> {
+	const controlPlaneTables = new Set<string>(
+		(
+			await database
+				.select('table_name')
+				.from('information_schema.tables')
+				.where({ table_schema: CONTROL_PLANE_SCHEMA, table_type: 'BASE TABLE' })
+		).map((row) => row.table_name as string)
+	);
+
+	if (!controlPlaneTables.has('directus_namespaces') || !controlPlaneTables.has('directus_user_namespaces')) {
+		return {
+			state: 'not-ready',
+			detail: 'the namespace migrations have not been applied to this database',
+		};
+	}
+
+	const registry = await database.select('id', 'schema_name').from('directus_namespaces');
+	const registered = new Set(registry.map((row) => row.id as string));
+	const schemas = registry.map((row) => row.schema_name as string).filter((schema) => schema !== CONTROL_PLANE_SCHEMA);
+
+	const missing = AREA_NAMESPACES.filter((entry) => !registered.has(entry.id)).map((entry) => entry.id);
+
+	const tablesBySchema = new Map<string, number>();
+
+	for (const row of await database
+		.select('table_schema')
+		.from('information_schema.tables')
+		.where({ table_type: 'BASE TABLE' })) {
+		const schema = row.table_schema as string;
+
+		tablesBySchema.set(schema, (tablesBySchema.get(schema) ?? 0) + 1);
+	}
+
+	// A registered namespace whose schema has nothing in it cannot serve anything.
+	const emptySchemas = schemas.filter((schema) => !tablesBySchema.has(schema));
+
+	const excluded = new Set(EXCLUDED_TABLES);
+	const shared = new Set(SHARED_TABLES);
+	const stranded = [...controlPlaneTables].filter(
+		(table) => !table.startsWith('directus_') && !shared.has(table) && !excluded.has(table)
+	);
+
+	if (missing.length === 0 && stranded.length === 0 && emptySchemas.length === 0) {
+		return {
+			state: 'migrated',
+			detail: `${AREA_NAMESPACES.length} area namespaces registered, nothing left in public`,
+		};
+	}
+
+	if (missing.length === AREA_NAMESPACES.length) {
+		return {
+			state: 'needs-migration',
+			detail: `no area namespace is registered and ${stranded.length} table(s) are still in public`,
+		};
+	}
+
+	const problems = [
+		missing.length ? `missing namespaces: ${missing.join(', ')}` : undefined,
+		emptySchemas.length ? `empty schemas: ${emptySchemas.join(', ')}` : undefined,
+		stranded.length ? `${stranded.length} table(s) still in public` : undefined,
+	].filter(Boolean);
+
+	return { state: 'partial', detail: problems.join('; ') };
+}

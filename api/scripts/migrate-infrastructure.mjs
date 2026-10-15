@@ -6,6 +6,8 @@
  *   node scripts/migrate-infrastructure.mjs            dry run — prints the plan, changes nothing
  *   node scripts/migrate-infrastructure.mjs --apply    performs the migration
  *   node scripts/migrate-infrastructure.mjs --verify   reports anything still left in public
+ *   node scripts/migrate-infrastructure.mjs --status   says whether this database needs the
+ *                                                      migration; exit 0 only when it does not
  *
  * Prerequisites, in order:
  *   1. The instance this is meant to transform (restore the dump first, e.g.
@@ -23,12 +25,17 @@
  */
 import knexFactory from 'knex';
 
-import { dryRun, migrateInfrastructure, verifyMigration } from '../dist/virtual-namespace/migrate-infrastructure.js';
+import {
+	dryRun,
+	migrateInfrastructure,
+	migrationStatus,
+	verifyMigration,
+} from '../dist/virtual-namespace/migrate-infrastructure.js';
 
 const args = new Set(process.argv.slice(2));
 
 if (args.has('--help') || args.has('-h')) {
-	console.log('usage: node scripts/migrate-infrastructure.mjs [--apply|--verify]');
+	console.log('usage: node scripts/migrate-infrastructure.mjs [--status|--apply|--verify]');
 	process.exit(0);
 }
 
@@ -107,6 +114,19 @@ try {
 
 		console.log(`\n── verify ──  ${leftovers.length} area collection(s) still in public`);
 		for (const leftover of leftovers) console.log(`  ${leftover.area}: ${leftover.collection} (${leftover.reason})`);
+	} else if (args.has('--status')) {
+		const status = await migrationStatus(database);
+
+		console.log(`status: ${status.state}`);
+		console.log(`  ${status.detail}`);
+
+		if (status.state === 'migrated') {
+			console.log('\nNothing to do — carry on.\n');
+		} else {
+			console.log('\nDo not start other work on this branch until this is resolved.');
+			console.log('See api/scripts/migrate-infrastructure.md\n');
+			process.exitCode = 1;
+		}
 	} else if (args.has('--verify')) {
 		const { leftovers } = await verifyMigration(database);
 

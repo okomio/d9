@@ -7,6 +7,8 @@ the database and running it again is the normal loop.
     node scripts/migrate-infrastructure.mjs            dry run, changes nothing
     node scripts/migrate-infrastructure.mjs --apply    performs the migration
     node scripts/migrate-infrastructure.mjs --verify   lists anything still in public
+    node scripts/migrate-infrastructure.mjs --status   says whether this database needs the
+                                                       migration; exit 0 only when it does not
 
 Run from `api/`. Connection settings come from the environment, defaulting to the
 local stack.
