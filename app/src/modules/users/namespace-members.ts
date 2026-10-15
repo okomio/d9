@@ -20,11 +20,7 @@ export type MemberPage = {
 
 export class MemberRequestError extends Error {
 	readonly response: { status: number; data: unknown };
-	constructor(
-		message: string,
-		status: number,
-		data: unknown
-	) {
+	constructor(message: string, status: number, data: unknown) {
 		super(message);
 		this.response = { status, data };
 	}
@@ -73,7 +69,12 @@ export function listNamespaceMembers(search: string, limit: number, offset: numb
 /** Called only after the admin enters a query; never preload the shared directory. */
 export function lookupExistingUsers(search: string, signal?: AbortSignal) {
 	const query = new URLSearchParams({ search, limit: '20' });
-	return request<{ data: MemberCandidate[] }>('GET', (id) => `namespaces/${id}/members/lookup?${query}`, undefined, signal);
+	return request<{ data: MemberCandidate[] }>(
+		'GET',
+		(id) => `namespaces/${id}/members/lookup?${query}`,
+		undefined,
+		signal
+	);
 }
 
 export function listNamespaceRoles(signal?: AbortSignal) {
@@ -88,11 +89,7 @@ export function addNamespaceMember(userId: string, roleId: string) {
 }
 
 export function changeNamespaceMemberRole(userId: string, roleId: string) {
-	return request<void>(
-		'PATCH',
-		(id) => `namespaces/${id}/members/${encodeURIComponent(userId)}`,
-		{ role_id: roleId }
-	);
+	return request<void>('PATCH', (id) => `namespaces/${id}/members/${encodeURIComponent(userId)}`, { role_id: roleId });
 }
 
 export function removeNamespaceMember(userId: string) {

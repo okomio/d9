@@ -58,8 +58,12 @@ export default defineComponent({
 				// Main-namespace accounts live in Global Administration; child namespaces show local members here.
 				.filter(
 					(part) =>
-						!(namespaceFrontendEnabled && part.type === 'module' && part.id === 'users' &&
-							getNamespaceRuntime()?.state.active?.namespace.kind !== 'virtual')
+						!(
+							namespaceFrontendEnabled &&
+							part.type === 'module' &&
+							part.id === 'users' &&
+							getNamespaceRuntime()?.state.active?.namespace.kind !== 'virtual'
+						)
 				)
 				.filter((modulePart) => {
 					if (modulePart.type === 'link') return true;
