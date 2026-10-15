@@ -5,6 +5,9 @@ import { randomUUID } from 'node:crypto';
 import { collections, credentials, groups, peer, row, tokens } from './fixtures.mjs';
 import { claims, error, Fixture, ok } from './harness.mjs';
 
+/** A generic resolver reports `INTERNAL_SERVER_ERROR`, which a crash does too — so assert the message. */
+const FORBIDDEN_MESSAGE = "You don't have permission to access this.";
+
 const fixture = new Fixture();
 before(() => fixture.start(), { timeout: 180_000 });
 after(() => fixture.stop(), { timeout: 30_000 });
@@ -1144,9 +1147,11 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 
 	it('local admin cannot write shared accounts', async () => {
 		const token = await scoped('localAdmin');
+		const id = fixture.data.users.admin;
+		const original = (await fixture.database('directus_users').where({ id }).first()).first_name;
 
 		error(
-			await fixture.request('legacy', `/users/${fixture.data.users.admin}`, {
+			await fixture.request('legacy', `/users/${id}`, {
 				method: 'PATCH',
 				token,
 				body: { first_name: 'escalated' },
@@ -1155,9 +1160,10 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 			'FORBIDDEN'
 		);
 
-		assert.notEqual(
-			(await fixture.database('directus_users').where({ id: fixture.data.users.admin }).first()).first_name,
-			'escalated'
+		assert.equal(
+			(await fixture.database('directus_users').where({ id }).first()).first_name,
+			original,
+			'The denied write must leave the row unchanged'
 		);
 	});
 
@@ -1181,8 +1187,19 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 				'GraphQL must not let a child admin edit a shared user'
 			);
 
-			assert.ok(response.body?.errors?.length > 0, 'A shared-account mutation must return an authorization error');
-			assert.ok(response.body.data?.update_users_item == null);
+			const [denial] = response.body?.errors ?? [];
+
+			assert.equal(response.body?.errors?.length, 1, 'A shared-account mutation must return exactly one error');
+			assert.equal(
+				denial?.message,
+				FORBIDDEN_MESSAGE,
+				'The error must be the authorization denial, not an internal failure'
+			);
+			assert.ok(
+				['FORBIDDEN', 'INTERNAL_SERVER_ERROR'].includes(denial?.extensions?.code),
+				`Expected a denial code, received ${denial?.extensions?.code}`
+			);
+			assert.equal(response.body.data?.update_users_item, null);
 		} finally {
 			await fixture.database('directus_users').where({ id }).update({ first_name: original.first_name });
 		}
@@ -1306,6 +1323,7 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 	it('local admin cannot edit a role owned by main', async () => {
 		const token = await scoped('localAdmin');
 		const mainRole = (await fixture.database('directus_users').where({ id: fixture.data.users.admin }).first()).role;
+		const original = (await fixture.database('directus_roles').where({ id: mainRole }).first()).name;
 
 		error(
 			await fixture.request('legacy', `/roles/${mainRole}`, { method: 'PATCH', token, body: { name: 'escalated' } }),
@@ -1313,7 +1331,11 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 			'FORBIDDEN'
 		);
 
-		assert.notEqual((await fixture.database('directus_roles').where({ id: mainRole }).first()).name, 'escalated');
+		assert.equal(
+			(await fixture.database('directus_roles').where({ id: mainRole }).first()).name,
+			original,
+			'The denied write must leave the role unchanged'
+		);
 	});
 
 	it('local permission rows cannot grant privileges to a role owned by main', async () => {
@@ -1573,7 +1595,7 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 		}
 	});
 
-	it('revoked namespace admins cannot reuse warmed member-list or lookup responses', async () => {
+	it('revoked namespace admins are denied member-list and lookup, which are never cacheable', async () => {
 		const token = await scoped('localAdmin');
 
 		const membership = await fixture
@@ -1587,6 +1609,7 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 			ok(await fixture.request('legacy', path, { token }));
 			const response = await fixture.request('legacy', path, { token });
 			ok(response);
+			// `/namespaces/*` is never cached, so there is no warmed response to reuse here.
 			assert.notEqual(response.headers.get('x-compat-cache'), 'HIT');
 		}
 
@@ -1598,7 +1621,7 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 		}
 	});
 
-	it('case-insensitive namespace control routes cannot bypass cache revocation checks', async () => {
+	it('case-insensitive namespace control routes cannot bypass the membership check', async () => {
 		const token = (await login('legacy', 'localAdmin')).access_token;
 
 		const membership = await fixture
@@ -1623,6 +1646,7 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 				ok(await fixture.request('legacy', path, options));
 				const response = await fixture.request('legacy', path, options);
 				ok(response);
+				// These routes are never cached either, and casing must not change that.
 				assert.notEqual(response.headers.get('x-compat-cache'), 'HIT');
 			}
 
@@ -1675,6 +1699,12 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 		const token = await scoped();
 		const query = { fields: 'id', sort: 'id' };
 		assert.equal(ok(await fixture.request('legacy', '/users', { token, query })).data.length, 5);
+
+		// Baseline: without a proven HIT the miss below would also pass against a cache that never stored.
+		const warmed = await fixture.request('legacy', '/users', { token, query });
+		ok(warmed);
+		assert.equal(warmed.headers.get('x-compat-cache'), 'HIT', 'the global directory must be cached before demotion');
+
 		const membership = { id: randomUUID(), user_id: id, namespace_id: peer.id, role_id: fixture.data.roles.localAdmin };
 
 		try {
