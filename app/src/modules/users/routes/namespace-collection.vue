@@ -27,7 +27,26 @@
 			<span v-if="total" class="item-count">{{ pageStart }}–{{ pageEnd }} of {{ total }} items</span>
 		</template>
 		<template #actions>
-			<namespace-member-search v-model="search" v-model:status="statusFilter" />
+			<search-input
+				:model-value="search"
+				:filter="memberFilter"
+				collection="directus_users"
+				@update:model-value="search = $event ?? ''"
+			>
+				<template #filter>
+					<v-list class="namespace-status-filter">
+						<v-list-item
+							v-for="option in statusOptions"
+							:key="option.value ?? 'all'"
+							clickable
+							:active="statusFilter === option.value"
+							@click="statusFilter = option.value"
+						>
+							<v-list-item-content>{{ option.text }}</v-list-item-content>
+						</v-list-item>
+					</v-list>
+				</template>
+			</search-input>
 			<v-button
 				v-if="selection.length"
 				v-tooltip.bottom="'Change local role'"
@@ -215,12 +234,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Field } from '@wbce-d9/types';
+import type { Field, Filter } from '@wbce-d9/types';
 import { ensureNamespaceRuntime } from '@/namespaces/live';
 import MemberCard from '@/layouts/cards/components/card.vue';
 import CardsHeader from '@/layouts/cards/components/header.vue';
 import RefreshSidebarDetail from '@/views/private/components/refresh-sidebar-detail.vue';
-import NamespaceMemberSearch from '../components/namespace-member-search.vue';
+import SearchInput from '@/views/private/components/search-input.vue';
 import {
 	addNamespaceMember,
 	changeNamespaceMemberRole,
@@ -246,6 +265,18 @@ const pageSize = ref(25);
 const cardSize = ref(4);
 const sort = ref(['email']);
 const statusFilter = ref<string | null>(null);
+
+const memberFilter = computed<Filter | null>(() =>
+	statusFilter.value ? { status: { _eq: statusFilter.value } } : null
+);
+
+const statusOptions = [
+	{ text: 'All statuses', value: null },
+	{ text: 'Active', value: 'active' },
+	{ text: 'Invited', value: 'invited' },
+	{ text: 'Suspended', value: 'suspended' },
+];
+
 const refreshInterval = ref<number | null>(null);
 const search = ref('');
 const loading = ref(false);
@@ -617,6 +648,9 @@ async function removeMember() {
 .sidebar-fields {
 	display: grid;
 	gap: 12px;
+}
+.namespace-status-filter {
+	min-width: 240px;
 }
 .state,
 .hint {
