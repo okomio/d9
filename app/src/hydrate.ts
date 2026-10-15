@@ -15,6 +15,7 @@ import { useSettingsStore } from '@/stores/settings';
 import { useUserStore } from '@/stores/user';
 import { useNotificationsStore } from '@/stores/notifications';
 import { useTranslationStrings } from '@/composables/use-translation-strings';
+import { NamespaceError } from '@/namespaces/adapter';
 import { onDehydrateExtensions, onHydrateExtensions } from './extensions';
 
 type GenericStore = {
@@ -73,16 +74,20 @@ export async function hydrate(options: { strict?: boolean } = {}): Promise<void>
 			const active = (await import('@/namespaces/live')).getNamespaceRuntime()?.state.active;
 
 			if (active?.namespace.kind === 'virtual') {
+				// Only a local role replaces the user's role. Inherited authority (a Global Admin
+				// without a membership) keeps the hydrated role, which is what grants entry.
 				const role = active.access.localRole;
 
-				userStore.currentUser.role = role
-					? ({
-							id: role.id,
-							name: role.name,
-							admin_access: active.access.isNamespaceAdmin,
-							app_access: active.access.canUseApp,
-					  } as typeof userStore.currentUser.role)
-					: (null as unknown as typeof userStore.currentUser.role);
+				if (role) {
+					userStore.currentUser.role = {
+						id: role.id,
+						name: role.name,
+						admin_access: active.access.isNamespaceAdmin,
+						app_access: active.access.canUseApp,
+					} as typeof userStore.currentUser.role;
+				} else if (!active.access.isNamespaceAdmin) {
+					userStore.currentUser.role = null as unknown as typeof userStore.currentUser.role;
+				}
 			}
 		}
 
@@ -121,6 +126,11 @@ export async function hydrate(options: { strict?: boolean } = {}): Promise<void>
 
 		appStore.basemap = getBasemapSources()[0].name;
 	} catch (error: any) {
+		// A switch cancels these reads and re-hydrates the target, so an obsolete run is not a failure.
+		if (error instanceof NamespaceError && error.kind === 'cancelled') {
+			return;
+		}
+
 		appStore.error = error;
 		if (options.strict) throw error;
 	} finally {
