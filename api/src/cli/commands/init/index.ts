@@ -11,7 +11,7 @@ import { generateHash } from '../../../utils/generate-hash.js';
 import type { Credentials } from '../../utils/create-db-connection.js';
 import createDBConnection from '../../utils/create-db-connection.js';
 import createEnv from '../../utils/create-env/index.js';
-import { defaultAdminRole, defaultAdminUser } from '../../utils/defaults.js';
+import { getDefaultAdminRole, defaultAdminUser } from '../../utils/defaults.js';
 import { drivers, getDriverForClient } from '../../utils/drivers.js';
 import { databaseQuestions } from './questions.js';
 
@@ -103,7 +103,7 @@ export default async function init(): Promise<void> {
 
 	await db('directus_roles').insert({
 		id: roleID,
-		...defaultAdminRole,
+		...(await getDefaultAdminRole(db)),
 	});
 
 	await db('directus_users').insert({

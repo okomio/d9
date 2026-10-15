@@ -11,6 +11,7 @@ import isDirectusJWT from '../utils/is-directus-jwt.js';
 import { verifyAccessJWT } from '../utils/jwt.js';
 import { readNamespaceClaim } from '../virtual-namespace/claims.js';
 import { ACCESS_COOKIE_CLEAR_OPTIONS, REFRESH_COOKIE_CLEAR_OPTIONS } from '../constants.js';
+import { resolveSharedAccountability } from '../virtual-namespace/authority.js';
 
 /**
  * Verify the passed JWT and assign the user ID and role to `req`
@@ -46,7 +47,7 @@ export const handler = async (req: Request, _res: Response, next: NextFunction) 
 	);
 
 	if (customAccountability && isEqual(customAccountability, defaultAccountability) === false) {
-		req.accountability = customAccountability;
+		req.accountability = await resolveSharedAccountability(database, customAccountability);
 		return next();
 	}
 
@@ -112,6 +113,8 @@ export const handler = async (req: Request, _res: Response, next: NextFunction) 
 				req.accountability.app = user.app_access === true || user.app_access == 1;
 			}
 		}
+
+		req.accountability = await resolveSharedAccountability(database, req.accountability);
 	} catch (error) {
 		if (error instanceof InvalidCredentialsException || error instanceof InvalidTokenException) {
 			if (req?.cookies[env['ACCESS_TOKEN_COOKIE_NAME']]) {

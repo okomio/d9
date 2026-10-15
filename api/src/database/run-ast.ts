@@ -1,4 +1,4 @@
-import type { Item, Query, SchemaOverview } from '@wbce-d9/types';
+import type { Accountability, Item, Query, SchemaOverview } from '@wbce-d9/types';
 import { toArray } from '@wbce-d9/utils';
 import type { Knex } from 'knex';
 import { clone, cloneDeep, isNil, merge, pick, uniq } from 'lodash-es';
@@ -13,9 +13,12 @@ import { getCollectionFromAlias } from '../utils/get-collection-from-alias.js';
 import type { AliasMap } from '../utils/get-column-path.js';
 import { getColumn } from '../utils/get-column.js';
 import { stripFunction } from '../utils/strip-function.js';
+import { applySharedUserReadScope, type SharedUserScope } from '../virtual-namespace/user-read-scope.js';
 import getDatabase from './index.js';
 
 type RunASTOptions = {
+	accountability?: Accountability | null | undefined;
+	sharedUserScope?: SharedUserScope | undefined;
 	/**
 	 * Query override for the current level
 	 */
@@ -75,7 +78,7 @@ export default async function runAST(
 		);
 
 		// The actual knex query builder instance. This is a promise that resolves with the raw items from the db
-		const dbQuery = await getDBQuery(schema, knex, collection, fieldNodes, query);
+		const dbQuery = await getDBQuery(schema, knex, collection, fieldNodes, query, options);
 
 		const rawItems: Item | Item[] = await dbQuery;
 
@@ -107,7 +110,12 @@ export default async function runAST(
 						},
 					});
 
-					nestedItems = (await runAST(node, schema, { knex, nested: true })) as Item[] | null;
+					nestedItems = (await runAST(node, schema, {
+						knex,
+						nested: true,
+						accountability: options?.accountability,
+						sharedUserScope: options?.sharedUserScope,
+					})) as Item[] | null;
 
 					if (nestedItems) {
 						items = mergeWithParentItems(schema, nestedItems, items!, nestedNode)!;
@@ -124,7 +132,12 @@ export default async function runAST(
 					query: { limit: -1 },
 				});
 
-				nestedItems = (await runAST(node, schema, { knex, nested: true })) as Item[] | null;
+				nestedItems = (await runAST(node, schema, {
+					knex,
+					nested: true,
+					accountability: options?.accountability,
+					sharedUserScope: options?.sharedUserScope,
+				})) as Item[] | null;
 
 				if (nestedItems) {
 					// Merge all fetched nested records with the parent items
@@ -244,8 +257,12 @@ async function getDBQuery(
 	knex: Knex,
 	table: string,
 	fieldNodes: (FieldNode | FunctionFieldNode)[],
-	query: Query
+	query: Query,
+	options?: RunASTOptions
 ): Promise<Knex.QueryBuilder> {
+	const scopeUsers = <T extends Knex.QueryBuilder>(builder: T) =>
+		applySharedUserReadScope(knex, builder, options?.accountability, options?.sharedUserScope);
+
 	const preProcess = getColumnPreprocessor(knex, schema, table);
 	const queryCopy = clone(query);
 	const helpers = getHelpers(knex);
@@ -255,7 +272,7 @@ async function getDBQuery(
 	// Queries with aggregates and groupBy will not have duplicate result
 	if (queryCopy.aggregate || queryCopy.group) {
 		const flatQuery = knex.select(fieldNodes.map(preProcess)).from(table);
-		return await applyQuery(knex, table, flatQuery, queryCopy, schema).query;
+		return await scopeUsers(applyQuery(knex, table, flatQuery, queryCopy, schema).query);
 	}
 
 	const primaryKey = schema.collections[table]!.primary;
@@ -349,7 +366,7 @@ async function getDBQuery(
 		}
 	}
 
-	if (!needsInnerQuery) return dbQuery;
+	if (!needsInnerQuery) return scopeUsers(dbQuery);
 
 	const wrapperQuery = knex
 		.select(fieldNodes.map(preProcess))
@@ -367,7 +384,7 @@ async function getDBQuery(
 		}
 	}
 
-	return wrapperQuery;
+	return scopeUsers(wrapperQuery);
 }
 
 function applyParentFilters(
