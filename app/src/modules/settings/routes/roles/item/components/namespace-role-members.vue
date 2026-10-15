@@ -1,64 +1,39 @@
 <template>
 	<section class="namespace-role-members">
-		<div class="heading">
-			<h2>{{ t('fields.directus_roles.users') }} {{ total > 0 ? `(${total})` : '' }}</h2>
-			<v-button secondary @click="openPicker">{{ t('add_existing') }}</v-button>
+		<div class="field-label type-label">{{ t('fields.directus_roles.users') }}</div>
+
+		<v-notice v-if="assignmentError || membersError" type="danger">{{ assignmentError || membersError }}</v-notice>
+		<v-skeleton-loader v-else-if="loadingMembers" type="block-list-item" />
+		<v-notice v-else-if="members.length === 0">{{ t('no_items') }}</v-notice>
+		<v-list v-else>
+			<v-list-item v-for="member in members" :key="member.user_id" block>
+				{{ displayName(member) }}
+				<span v-if="member.email && member.email !== displayName(member)" class="email">{{ member.email }}</span>
+			</v-list-item>
+		</v-list>
+
+		<div class="actions">
+			<v-button :disabled="assigning" @click="pickerOpen = true">{{ t('add_existing') }}</v-button>
+			<div class="spacer" />
+			<v-button v-if="members.length < total" secondary :loading="loadingMembers" @click="loadMembers">
+				{{ t('interfaces.select-multiple-checkbox.show_more', { count: total - members.length }) }}
+			</v-button>
 		</div>
 
-		<v-notice v-if="membersError" type="danger">{{ membersError }}</v-notice>
-		<p v-else-if="loadingMembers">{{ t('loading') }}</p>
-		<p v-else-if="members.length === 0" class="empty">{{ t('no_users_copy') }}</p>
-		<ul v-else class="members">
-			<li v-for="member in members" :key="member.user_id">
-				<strong>{{ displayName(member) }}</strong>
-				<span v-if="member.email && member.email !== displayName(member)">{{ member.email }}</span>
-			</li>
-		</ul>
-		<v-button v-if="members.length < total" secondary :loading="loadingMembers" @click="loadMembers">
-			Load more
-		</v-button>
-
-		<v-dialog v-model="pickerOpen" @esc="pickerOpen = false">
-			<v-card>
-				<v-card-title>{{ t('add_existing') }}</v-card-title>
-				<v-card-text>
-					<div class="search">
-						<v-input v-model="search" :placeholder="t('search')" @keyup.enter="loadCandidates" />
-						<v-button secondary :loading="loadingCandidates" @click="loadCandidates">{{ t('search') }}</v-button>
-					</div>
-					<v-notice v-if="pickerError" type="danger">{{ pickerError }}</v-notice>
-					<p v-else-if="loadingCandidates">{{ t('loading') }}</p>
-					<p v-else-if="candidates.length === 0" class="empty">{{ t('no_results') }}</p>
-					<ul v-else class="candidates">
-						<li v-for="candidate in candidates" :key="candidate.user_id">
-							<span>
-								<strong>{{ displayName(candidate) }}</strong>
-								<small v-if="candidate.email && candidate.email !== displayName(candidate)">
-									{{ candidate.email }}
-								</small>
-							</span>
-							<v-button
-								secondary
-								:disabled="candidate.role_id === roleId || !!assigning"
-								:loading="assigning === candidate.user_id"
-								@click="assign(candidate)"
-							>
-								{{ candidate.role_id === roleId ? 'In role' : t('add_existing') }}
-							</v-button>
-						</li>
-					</ul>
-				</v-card-text>
-				<v-card-actions>
-					<v-button secondary @click="pickerOpen = false">{{ t('cancel') }}</v-button>
-				</v-card-actions>
-			</v-card>
-		</v-dialog>
+		<drawer-collection
+			v-model:active="pickerOpen"
+			collection="directus_users"
+			:filter="pickerFilter"
+			multiple
+			@input="assignSelected"
+		/>
 	</section>
 </template>
 
 <script setup lang="ts">
 import api from '@/api';
-import { onMounted, ref, watch } from 'vue';
+import DrawerCollection from '@/views/private/components/drawer-collection.vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 type Person = {
@@ -77,12 +52,14 @@ const members = ref<Member[]>([]);
 const total = ref(0);
 const loadingMembers = ref(false);
 const membersError = ref<string | null>(null);
+const assignmentError = ref<string | null>(null);
 const pickerOpen = ref(false);
-const search = ref('');
-const candidates = ref<Candidate[]>([]);
-const loadingCandidates = ref(false);
-const pickerError = ref<string | null>(null);
-const assigning = ref<string | null>(null);
+const assigning = ref(false);
+
+const pickerFilter = computed(() =>
+	members.value.length > 0 ? { id: { _nin: members.value.map((member) => member.user_id) } } : null
+);
+
 let membersRequest = 0;
 
 onMounted(() => void loadMembers());
@@ -130,50 +107,39 @@ async function loadMembers() {
 	}
 }
 
-function openPicker() {
-	pickerOpen.value = true;
-	search.value = '';
-	void loadCandidates();
-}
-
-async function loadCandidates() {
-	loadingCandidates.value = true;
-	pickerError.value = null;
+async function assignSelected(userIds: (string | number)[]) {
+	if (assigning.value || userIds.length === 0) return;
+	assigning.value = true;
+	assignmentError.value = null;
+	const base = `/namespaces/${encodeURIComponent(props.namespaceId)}/members`;
 
 	try {
-		const response = await api.get<{ data: Candidate[] }>(
-			`/namespaces/${encodeURIComponent(props.namespaceId)}/members/lookup`,
-			{ params: { search: search.value || undefined, limit: 20 } }
-		);
+		for (const userId of userIds) {
+			const id = String(userId);
 
-		candidates.value = response.data.data;
-	} catch (error) {
-		pickerError.value = errorMessage(error, 'Could not find users');
-	} finally {
-		loadingCandidates.value = false;
-	}
-}
+			const response = await api.get<{ data: Candidate[] }>(`${base}/lookup`, {
+				params: { user_id: id, limit: 1 },
+			});
 
-async function assign(candidate: Candidate) {
-	if (candidate.role_id === props.roleId || assigning.value) return;
-	assigning.value = candidate.user_id;
-	pickerError.value = null;
+			const candidate = response.data.data[0];
 
-	try {
-		const base = `/namespaces/${encodeURIComponent(props.namespaceId)}/members`;
+			if (!candidate || candidate.user_id !== id) throw new Error('Could not find the selected user');
+			if (candidate.role_id === props.roleId) continue;
 
-		if (candidate.role_id) {
-			await api.patch(`${base}/${encodeURIComponent(candidate.user_id)}`, { role_id: props.roleId });
-		} else {
-			await api.post(base, { user_id: candidate.user_id, role_id: props.roleId });
+			if (candidate.role_id) {
+				await api.patch(`${base}/${encodeURIComponent(id)}`, { role_id: props.roleId });
+			} else {
+				await api.post(base, { user_id: id, role_id: props.roleId });
+			}
 		}
-
-		pickerOpen.value = false;
-		resetMembers();
 	} catch (error) {
-		pickerError.value = errorMessage(error, 'Could not add user to this role');
+		assignmentError.value = errorMessage(
+			error,
+			error instanceof Error ? error.message : 'Could not add user to this role'
+		);
 	} finally {
-		assigning.value = null;
+		assigning.value = false;
+		resetMembers();
 	}
 }
 </script>
@@ -184,47 +150,23 @@ async function assign(candidate: Candidate) {
 	max-width: 800px;
 }
 
-.heading,
-.search,
-.candidates li {
+.field-label {
+	margin-bottom: 8px;
+}
+
+.actions {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
-	gap: 16px;
+	gap: var(--v-sheet-padding);
+	margin-top: 8px;
 }
 
-.heading {
-	margin-bottom: 16px;
+.spacer {
+	flex-grow: 1;
 }
 
-.heading h2 {
-	margin: 0;
-	font-size: 1.25rem;
-}
-
-.members,
-.candidates {
-	list-style: none;
-	padding: 0;
-}
-
-.members li,
-.candidates li {
-	padding: 12px 0;
-	border-bottom: var(--border-width) solid var(--border-normal);
-}
-
-.members span,
-.candidates small {
-	display: block;
+.email {
+	margin-left: 8px;
 	color: var(--foreground-subdued);
-}
-
-.empty {
-	color: var(--foreground-subdued);
-}
-
-.search {
-	margin-bottom: 16px;
 }
 </style>

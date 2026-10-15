@@ -77,13 +77,23 @@
 
 			<v-form
 				v-model="edits"
-				:fields="roleFields"
+				:fields="roleFieldsBeforeUsers"
 				:primary-key="primaryKey"
 				:loading="loading"
 				:initial-values="item"
 				:batch-mode="isBatch"
 			/>
 			<namespace-role-members v-if="namespaceId" :namespace-id="namespaceId" :role-id="primaryKey" />
+			<v-form
+				v-if="isVirtualNamespace && namespaceField"
+				v-model="edits"
+				class="namespace-field"
+				:fields="[namespaceField]"
+				:primary-key="primaryKey"
+				:loading="loading"
+				:initial-values="item"
+				:batch-mode="isBatch"
+			/>
 		</div>
 
 		<template #sidebar>
@@ -164,15 +174,16 @@ export default defineComponent({
 		const namespaceId = isVirtualNamespace ? getNamespaceRuntime()?.state.active?.namespaceId : null;
 		const { fields } = useCollection('directus_roles');
 
-		const roleFields = computed(() =>
+		const roleFieldsBeforeUsers = computed(() =>
 			isVirtualNamespace
-				? fields.value
-						.filter((field) => field.field !== 'users')
-						.map((field) =>
-							field.field === 'namespace' ? { ...field, meta: { ...field.meta!, readonly: true } } : field
-						)
+				? fields.value.filter((field) => field.field !== 'users' && field.field !== 'namespace')
 				: fields.value
 		);
+
+		const namespaceField = computed(() => {
+			const field = fields.value.find((field) => field.field === 'namespace');
+			return field ? { ...field, meta: { ...field.meta!, readonly: true } } : null;
+		});
 
 		const revisionsDrawerDetailRef = ref<InstanceType<typeof RevisionsDrawerDetail> | null>(null);
 
@@ -248,7 +259,8 @@ export default defineComponent({
 			canInviteUsers,
 			isVirtualNamespace,
 			namespaceId,
-			roleFields,
+			roleFieldsBeforeUsers,
+			namespaceField,
 			revisionsDrawerDetailRef,
 		};
 
@@ -313,5 +325,9 @@ export default defineComponent({
 .permissions-overview,
 .roles .v-notice {
 	margin-bottom: 48px;
+}
+
+.namespace-field {
+	margin-top: var(--form-vertical-gap);
 }
 </style>

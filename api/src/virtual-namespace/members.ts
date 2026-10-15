@@ -168,7 +168,8 @@ export async function lookupUsers(
 	database: Knex,
 	namespaceId: string,
 	search: string | undefined,
-	limit = 20
+	limit = 20,
+	userId?: string
 ): Promise<MemberCandidate[]> {
 	const query = database
 		.select({
@@ -183,6 +184,8 @@ export async function lookupUsers(
 		.leftJoin(`${MEMBERSHIP_TABLE} as m`, function () {
 			this.on('m.user_id', '=', 'u.id').andOn('m.namespace_id', '=', database.raw('?', [namespaceId]));
 		});
+
+	if (userId) query.where('u.id', userId);
 
 	if (search) {
 		const like = `%${search}%`;
