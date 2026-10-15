@@ -103,6 +103,7 @@ try {
 			console.log(
 				`  ${pad(area.id, 16)} → ${pad(area.schema, 16)} ${pad(`${area.tablesMoved.length} tables moved`, 20)}` +
 					` ${area.metadataMoved.collections} collections / ${area.metadataMoved.fields} fields / ${area.metadataMoved.relations} relations` +
+					(area.metadataMoved.aliasFields ? ` / ${area.metadataMoved.aliasFields} alias field(s)` : '') +
 					`${area.registered ? '  (registered now)' : ''}`
 			);
 		}

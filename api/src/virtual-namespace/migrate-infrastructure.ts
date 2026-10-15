@@ -390,7 +390,7 @@ export type MigrationResult = {
 		schema: string;
 		registered: boolean;
 		tablesMoved: string[];
-		metadataMoved: { collections: number; fields: number; relations: number };
+		metadataMoved: { collections: number; fields: number; relations: number; aliasFields: number };
 	}>;
 	rolesUpdated: number;
 	membershipsCreated: number;
@@ -447,6 +447,22 @@ export async function migrateInfrastructure(database: Knex): Promise<MigrationRe
 			const own = `collection in (${inList(collections)})`;
 			const reachable = inList([...collections, ...SHARED_TABLES]);
 
+			// An M2M alias is described on its junction's relation row, but the field it
+			// declares lives on the collection at the other end, which can be shared:
+			// `directus_users.platformplus_teams` is an alias onto Platform+ `platformplus_teams`.
+			// That relation row moves with the junction, so the field row has to move too —
+			// otherwise `public` keeps declaring a field whose relation is gone, Directus stops
+			// recognising it as an alias, and every read of `directus_users` fails on a column
+			// that does not exist.
+			const aliasFields = (
+				await database
+					.select('one_collection', 'one_field')
+					.from('directus_relations')
+					.whereIn('many_collection', collections)
+					.whereNotNull('one_field')
+					.whereNot('one_field', '')
+			).filter((row) => row.one_collection && !collections.includes(row.one_collection as string));
+
 			const metadata = {
 				collections: await moveRows(database, schema, 'directus_collections', own),
 				fields: await moveRows(database, schema, 'directus_fields', own),
@@ -456,6 +472,21 @@ export async function migrateInfrastructure(database: Knex): Promise<MigrationRe
 					'directus_relations',
 					`many_collection in (${inList(collections)}) and (one_collection is null or one_collection in (${reachable}))`
 				),
+				aliasFields: aliasFields.length
+					? await moveRows(
+							database,
+							schema,
+							'directus_fields',
+							aliasFields
+								.map(
+									(row) =>
+										`(collection = ${quoteLiteral(row.one_collection as string)} and field = ${quoteLiteral(
+											row.one_field as string
+										)})`
+								)
+								.join(' or ')
+						)
+					: 0,
 			};
 
 			await database('directus_namespaces').where({ id }).update({ readiness: 'ready' });
@@ -471,7 +502,7 @@ export async function migrateInfrastructure(database: Knex): Promise<MigrationRe
 			schema,
 			registered: !existing,
 			tablesMoved,
-			metadataMoved: { collections: 0, fields: 0, relations: 0 },
+			metadataMoved: { collections: 0, fields: 0, relations: 0, aliasFields: 0 },
 		});
 	}
 
