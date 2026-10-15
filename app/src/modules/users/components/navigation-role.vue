@@ -3,7 +3,7 @@
 		<v-list-item-icon><v-icon :name="role.icon" /></v-list-item-icon>
 		<v-list-item-content>{{ role.name }}</v-list-item-content>
 
-		<v-menu v-if="isAdmin" ref="contextMenu" show-arrow placement="bottom-start">
+		<v-menu v-if="isAdmin && !virtual" ref="contextMenu" show-arrow placement="bottom-start">
 			<v-list>
 				<v-list-item clickable :to="settingLink">
 					<v-list-item-icon>
@@ -34,6 +34,7 @@ export default defineComponent({
 			type: Boolean,
 			default: false,
 		},
+		virtual: { type: Boolean, default: false },
 	},
 	setup(props) {
 		const { t } = useI18n();

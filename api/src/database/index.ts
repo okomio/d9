@@ -18,6 +18,13 @@ import { getActiveNamespace } from '../virtual-namespace/context.js';
 import { getHelpers } from './helpers/index.js';
 
 let database: Knex | null = null;
+/**
+ * Schema inspectors, keyed by the database handle they describe.
+ *
+ * Keyed by handle rather than by namespace name, so the cache cannot return an inspector for a
+ * different connection than the one it will query. That also covers a namespace database used
+ * outside namespace context, as deferred work does.
+ */
 const inspectors = new WeakMap<Knex, SchemaInspector>();
 let databaseVersion: string | null = null;
 
@@ -196,6 +203,15 @@ function buildDatabase(searchPathOverride?: string | string[]): Knex {
 	return connection;
 }
 
+/**
+ * The schema inspector for the active namespace.
+ *
+ * Cached rather than created per call: `getDatabase()` is namespace-aware, so an inspector created
+ * once for the process binds to whatever namespace happened to ask first — in practice `public` —
+ * and every later namespace then reads the wrong tables. That made
+ * `CollectionsService` resolve `schema: null` for collections that live in a namespace, which the
+ * app reads as "no real collections" and renders as an empty Content panel.
+ */
 export function getSchemaInspector(): SchemaInspector {
 	const database = getDatabase();
 	const existing = inspectors.get(database);
