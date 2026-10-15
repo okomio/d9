@@ -6,7 +6,8 @@
 		"format": "prettier --write \"**/*.{md,y?(a)ml,json}\"",
 		"lint": "eslint .",
 		"test": "pnpm --recursive --filter '!tests-blackbox' test",
-		"test:blackbox": "pnpm --filter directus9 deploy --prod dist && pnpm --filter tests-blackbox test"
+		"test:blackbox": "pnpm --filter directus9 deploy --prod dist && pnpm --filter tests-blackbox test",
+		"test:back-compat": "npm --prefix api run test:back-compat"
 	},
 	"devDependencies": {
 		"@changesets/cli": "^2.29.8",
