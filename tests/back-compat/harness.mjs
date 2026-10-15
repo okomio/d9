@@ -113,6 +113,7 @@ export class Fixture {
 				VIRTUAL_NAMESPACES_ALLOW_HEADER: 'true',
 			},
 			defaultless: { VIRTUAL_NAMESPACES_ENABLED: 'true', VIRTUAL_NAMESPACES_ALLOW_HEADER: 'true' },
+			peerDefault: { VIRTUAL_NAMESPACES_ENABLED: 'true', VIRTUAL_NAMESPACES_DEFAULT: 'compat_peer' },
 		})) {
 			await this.startServer(mode, overrides);
 		}

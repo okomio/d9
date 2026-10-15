@@ -2,13 +2,13 @@ import type { Request, RequestHandler } from 'express';
 import getDatabase from '../database/index.js';
 import { ForbiddenException, InvalidPayloadException } from '../exceptions/index.js';
 import asyncHandler from '../utils/async-handler.js';
-import { getDefaultNamespace, isNamespaceHeaderEnabled, NAMESPACE_HEADER } from './config.js';
+import { isNamespaceHeaderEnabled, NAMESPACE_HEADER } from './config.js';
 import { runWithNamespace } from './context.js';
-import { resolveNamespaceMembership } from './membership.js';
+import { resolveNamespaceRole } from './access.js';
 import { isControlPlanePath } from './paths.js';
 import { isSharedGraphQLOperation } from './graphql.js';
 import { getNamespace } from './registry.js';
-import { pickNamespace } from './resolve.js';
+import { pickNamespace, resolveLegacyDefaultNamespace } from './resolve.js';
 import { getActiveNamespaceId } from './context.js';
 import { isAlwaysBlockedWrite, namespaceOwnedWrite, targetIdFromPath } from './admin-scope.js';
 
@@ -18,8 +18,8 @@ import { isAlwaysBlockedWrite, namespaceOwnedWrite, targetIdFromPath } from './a
  */
 function readRequestedNamespace(req: Request): { claimed?: string | undefined; header?: string | undefined } {
 	return {
-		claimed: req.virtualNamespace,
-		header: isNamespaceHeaderEnabled() ? req.header(NAMESPACE_HEADER) : undefined,
+		claimed: pickNamespace({ claimed: req.virtualNamespace }),
+		header: isNamespaceHeaderEnabled() ? pickNamespace({ header: req.header(NAMESPACE_HEADER) }) : undefined,
 	};
 }
 
@@ -34,10 +34,9 @@ function readRequestedNamespace(req: Request): { claimed?: string | undefined; h
  * an unknown id and a namespace that is not ready fail closed: silently falling
  * back to the default would serve the wrong data under a correct-looking label.
  *
- * For an authenticated non-admin the role is resolved from the membership table
- * together with its access flags, and replaces `accountability.role`. Without a
- * membership the request is rejected. Global admins cross every namespace
- * without one.
+ * For an authenticated non-admin main uses the shared primary role, while a
+ * child uses its membership role and access flags. Global admins cross every
+ * namespace without a membership.
  */
 export function virtualNamespace(): RequestHandler {
 	return asyncHandler(async (req, res, next) => {
@@ -58,7 +57,10 @@ export function virtualNamespace(): RequestHandler {
 			throw new InvalidPayloadException(`"${NAMESPACE_HEADER}" conflicts with the namespace of the supplied token`);
 		}
 
-		const requested = pickNamespace({ claimed, header, fallback: getDefaultNamespace() });
+		const database = getDatabase();
+
+		const requested =
+			pickNamespace({ claimed, header }) ?? (await resolveLegacyDefaultNamespace(database, accountability.user));
 
 		if (!requested) {
 			throw new ForbiddenException();
@@ -66,7 +68,6 @@ export function virtualNamespace(): RequestHandler {
 
 		// Resolved against the shared schema: this runs before the namespace
 		// context is entered, so `getDatabase()` is still the default.
-		const database = getDatabase();
 		const namespace = await getNamespace(database, requested);
 
 		if (!namespace || namespace.readiness !== 'ready') {
@@ -74,7 +75,16 @@ export function virtualNamespace(): RequestHandler {
 		}
 
 		if (accountability.globalAdmin !== true) {
-			const membership = await resolveNamespaceMembership(database, accountability.user, namespace.id);
+			const membership = await resolveNamespaceRole(
+				database,
+				{
+					user: accountability.user,
+					role: accountability.role ?? null,
+					admin: false,
+					app: accountability.app === true,
+				},
+				namespace
+			);
 
 			if (!membership) {
 				throw new ForbiddenException();
@@ -83,9 +93,9 @@ export function virtualNamespace(): RequestHandler {
 			// Remember where this admin authority came from. The guard mounted
 			// after this middleware uses it to keep a namespace admin off the
 			// shared control plane, which is instance-wide.
-			if (membership.admin_access) req.namespaceScopedAdmin = true;
+			if (namespace.kind !== 'main' && membership.admin_access) req.namespaceScopedAdmin = true;
 
-			accountability.role = membership.role;
+			accountability.role = membership.id;
 			accountability.admin = membership.admin_access;
 			accountability.app = membership.app_access;
 		}

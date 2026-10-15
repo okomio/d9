@@ -882,9 +882,15 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 	});
 
 	it('missing defaults keep shared identity reachable and fail closed for content', async () => {
-		const session = await login('defaultless', 'member');
+		const session = await login('defaultless', 'unmapped');
+		assert.equal(session.namespace, null);
 		ok(await fixture.request('defaultless', '/users/me', { token: session.access_token }));
-		ok(await fixture.request('defaultless', '/namespaces', { token: session.access_token }));
+
+		assert.equal(
+			ok(await fixture.request('defaultless', '/namespaces', { token: session.access_token })).default,
+			null
+		);
+
 		const response = await fixture.request('defaultless', '/items/tracking_events', { token: session.access_token });
 
 		assert.ok(
@@ -894,7 +900,7 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 	});
 
 	it('defaultless GraphQL resolves the selected shared operation through aliases and fragments', async () => {
-		const token = (await login('defaultless')).access_token;
+		const token = (await login('defaultless', 'unmapped')).access_token;
 
 		const query = `query Identity { ...IdentityFields } fragment IdentityFields on Query { me: users_me { id } ping: server_ping }
 			query Scoped { users { id } }`;
@@ -907,7 +913,7 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 			})
 		);
 
-		assert.deepEqual(response, { data: { me: { id: fixture.data.users.admin }, ping: 'pong' } });
+		assert.deepEqual(response, { data: { me: { id: fixture.data.users.unmapped }, ping: 'pong' } });
 
 		assert.deepEqual(
 			ok(
@@ -932,8 +938,8 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 	});
 
 	it('defaultless shared GraphQL mutation works, while a mixed mutation fails before side effects', async () => {
-		const token = (await login('defaultless')).access_token;
-		const id = fixture.data.users.admin;
+		const token = (await login('defaultless', 'unmapped')).access_token;
+		const id = fixture.data.users.unmapped;
 		const original = await fixture.database('directus_users').where({ id }).first();
 
 		try {
@@ -1674,7 +1680,12 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 		const original = await fixture.database('directus_users').where({ id }).first();
 		const token = await scoped();
 		const query = { fields: 'id', sort: 'id' };
-		assert.equal(ok(await fixture.request('legacy', '/users', { token, query })).data.length, 5);
+
+		assert.deepEqual(
+			ok(await fixture.request('legacy', '/users', { token, query })).data.map((user) => user.id),
+			Object.values(fixture.data.users).sort()
+		);
+
 		const membership = { id: randomUUID(), user_id: id, namespace_id: peer.id, role_id: fixture.data.roles.localAdmin };
 
 		try {
@@ -1764,6 +1775,215 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 			assert.equal(activity.namespace, 'main');
 		} finally {
 			await fixture.database('tracking_events').where({ id }).delete();
+		}
+	});
+});
+
+describe('T6: owner defaults and tooling header fallback', { concurrency: false }, () => {
+	it('static tokens and stale claim-less JWTs use each current owner default', async () => {
+		const user = fixture.data.users.member;
+		const original = await fixture.database('directus_users').where({ id: user }).first();
+		const memberSession = await login('legacy', 'member');
+		const adminSession = await login('legacy');
+		assert.equal(claims(memberSession.access_token).role, original.role);
+
+		try {
+			await fixture.database('directus_users').where({ id: user }).update({ role: fixture.data.roles.peerReader });
+
+			for (const [namespace, credentials] of [
+				['main', [tokens.admin, adminSession.access_token]],
+				[peer.id, [tokens.member, memberSession.access_token]],
+			]) {
+				for (const token of credentials) {
+					assert.equal(
+						ok(
+							await fixture.request('legacy', '/items/tracking_events/first', {
+								token,
+								query: { fields: 'id,configuration' },
+							})
+						).data.configuration.namespace,
+						namespace
+					);
+
+					assert.equal(ok(await fixture.request('legacy', '/namespaces', { token })).default, namespace);
+				}
+			}
+
+			const fresh = await login('legacy', 'member');
+			assert.equal(claims(fresh.access_token).namespace, undefined);
+			assert.equal(fresh.namespace.id, peer.id);
+			assert.equal(fresh.namespace.local_role.id, fixture.data.roles.peerReader);
+			assert.equal(fresh.is_global_admin, false);
+
+			const refreshed = ok(
+				await fixture.request('legacy', '/auth/refresh', {
+					method: 'POST',
+					token: null,
+					body: { refresh_token: fresh.refresh_token },
+				})
+			).data;
+
+			assert.equal(claims(refreshed.access_token).namespace, undefined);
+			assert.equal(refreshed.namespace.id, peer.id);
+			assert.equal(claims(refreshed.access_token).session_id, claims(fresh.access_token).session_id);
+			ok(await fixture.request('legacy', '/items/tracking_events', { token: memberSession.access_token }));
+
+			error(
+				await fixture.request('legacy', '/items/tracking_events', {
+					token: refreshed.access_token,
+					query: { fields: 'secret' },
+				}),
+				403,
+				'FORBIDDEN'
+			);
+		} finally {
+			await fixture.database('directus_users').where({ id: user }).update({ role: original.role });
+		}
+	});
+
+	it('main-role access and token minting need no redundant main membership', async () => {
+		const membership = await fixture
+			.database('directus_user_namespaces')
+			.where({ user_id: fixture.data.users.member, namespace_id: 'main' })
+			.first();
+
+		try {
+			await fixture.database('directus_user_namespaces').where({ id: membership.id }).delete();
+			const session = await login('legacy', 'member');
+			assert.equal(session.namespace.id, 'main');
+
+			for (const token of [tokens.member, session.access_token]) {
+				ok(await fixture.request('legacy', '/items/tracking_events', { token }));
+				assert.equal(ok(await fixture.request('legacy', '/namespaces', { token })).default, 'main');
+			}
+
+			const scopedMain = await scoped('member', 'main');
+			ok(await fixture.request('legacy', '/items/tracking_events', { token: scopedMain }));
+		} finally {
+			await fixture.database('directus_user_namespaces').insert(membership);
+		}
+	});
+
+	it('instance fallback is used only without an owner mapping, never an arbitrary accessible namespace', async () => {
+		const membership = {
+			id: randomUUID(),
+			user_id: fixture.data.users.unmapped,
+			namespace_id: peer.id,
+			role_id: fixture.data.roles.peerReader,
+		};
+
+		try {
+			await fixture.database('directus_user_namespaces').insert(membership);
+
+			for (const mode of ['legacy', 'defaultless']) {
+				const session = await login(mode, 'unmapped');
+				assert.equal(session.namespace, null);
+				const listing = ok(await fixture.request(mode, '/namespaces', { token: session.access_token }));
+				assert.equal(listing.default, null);
+				assert.ok(listing.data.some((namespace) => namespace.id === peer.id && namespace.can_enter));
+				error(await fixture.request(mode, '/items/tracking_events', { token: session.access_token }), 403, 'FORBIDDEN');
+				ok(await fixture.request(mode, '/users/me', { token: session.access_token }));
+			}
+
+			const session = await login('peerDefault', 'unmapped');
+			assert.equal(session.namespace.id, peer.id);
+
+			for (const token of [tokens.unmapped, session.access_token]) {
+				ok(await fixture.request('peerDefault', '/items/tracking_events', { token }));
+				assert.equal(ok(await fixture.request('peerDefault', '/namespaces', { token })).default, peer.id);
+			}
+		} finally {
+			await fixture.database('directus_user_namespaces').where({ id: membership.id }).delete();
+		}
+	});
+
+	it('revoked owner-default membership denies warmed content without rerouting or losing the session', async () => {
+		const user = fixture.data.users.member;
+		const original = await fixture.database('directus_users').where({ id: user }).first();
+
+		const membership = await fixture
+			.database('directus_user_namespaces')
+			.where({ user_id: user, namespace_id: peer.id })
+			.first();
+
+		const session = await login('legacy', 'member');
+
+		try {
+			await fixture.database('directus_users').where({ id: user }).update({ role: fixture.data.roles.peerReader });
+
+			for (const token of [tokens.member, session.access_token]) {
+				ok(await fixture.request('legacy', '/items/tracking_events', { token }));
+			}
+
+			await fixture.database('directus_user_namespaces').where({ id: membership.id }).delete();
+
+			for (const token of [tokens.member, session.access_token]) {
+				error(await fixture.request('legacy', '/items/tracking_events', { token }), 403, 'FORBIDDEN');
+				assert.equal(ok(await fixture.request('legacy', '/namespaces', { token })).default, null);
+				ok(await fixture.request('legacy', '/users/me', { token }));
+			}
+
+			const refreshed = ok(
+				await fixture.request('legacy', '/auth/refresh', {
+					method: 'POST',
+					token: null,
+					body: { refresh_token: session.refresh_token },
+				})
+			).data;
+
+			assert.equal(refreshed.namespace, null);
+		} finally {
+			await fixture.database('directus_user_namespaces').where({ id: membership.id }).delete();
+			await fixture.database('directus_user_namespaces').insert(membership);
+			await fixture.database('directus_users').where({ id: user }).update({ role: original.role });
+		}
+	});
+
+	it('an unready owner default cannot fall back to main', async () => {
+		const user = fixture.data.users.member;
+		const original = await fixture.database('directus_users').where({ id: user }).first();
+
+		try {
+			await fixture.database('directus_users').where({ id: user }).update({ role: fixture.data.roles.peerReader });
+			await fixture.database('directus_namespaces').where({ id: peer.id }).update({ readiness: 'provisioning' });
+			const session = await login('legacy', 'member');
+			assert.equal(session.namespace, null);
+			assert.equal(ok(await fixture.request('legacy', '/namespaces', { token: session.access_token })).default, null);
+
+			error(
+				await fixture.request('legacy', '/items/tracking_events', { token: session.access_token }),
+				403,
+				'FORBIDDEN'
+			);
+
+			error(
+				await fixture.request('legacy', `/namespaces/${peer.id}/token`, {
+					method: 'POST',
+					token: session.access_token,
+				}),
+				403,
+				'FORBIDDEN'
+			);
+		} finally {
+			await fixture.database('directus_namespaces').where({ id: peer.id }).update({ readiness: 'ready' });
+			await fixture.database('directus_users').where({ id: user }).update({ role: original.role });
+		}
+	});
+
+	it('authorized tooling headers override owner defaults while disabled headers are ignored', async () => {
+		for (const [mode, namespace] of [
+			['legacy', peer.id],
+			['peerDefault', 'main'],
+		]) {
+			const response = ok(
+				await fixture.request(mode, '/items/tracking_events/first', {
+					token: tokens.member,
+					headers: { 'x-namespace': peer.id },
+					query: { fields: 'id,configuration' },
+				})
+			);
+
+			assert.equal(response.data.configuration.namespace, namespace);
 		}
 	});
 });

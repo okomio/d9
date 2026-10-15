@@ -26,6 +26,7 @@ export const tokens = {
 	localAdmin: 'compat-static-local-admin',
 	outsider: 'compat-static-outsider',
 	writer: 'compat-static-write-only',
+	unmapped: 'compat-static-unmapped',
 };
 
 const relationTargets = {
@@ -230,7 +231,7 @@ export async function seed(database, storageRoot) {
 	const users = { admin: admin.id };
 	const password = await argon2.hash(credentials.password);
 
-	for (const key of ['member', 'localAdmin', 'outsider', 'writer']) {
+	for (const key of ['member', 'localAdmin', 'outsider', 'writer', 'unmapped']) {
 		users[key] = randomUUID();
 
 		await database('directus_users').insert({
@@ -238,7 +239,7 @@ export async function seed(database, storageRoot) {
 			email: `${key}@compat.example.com`,
 			password,
 			token: tokens[key],
-			role: key === 'localAdmin' ? roles.outsider : roles[key],
+			role: key === 'localAdmin' ? roles.outsider : roles[key] ?? null,
 			status: 'active',
 			provider: 'default',
 		});
@@ -319,6 +320,19 @@ export async function seed(database, storageRoot) {
 	for (const action of ['read', 'update']) {
 		permissions.push({
 			role: roles.outsider,
+			namespace: 'main',
+			collection: 'directus_users',
+			action,
+			fields: 'id,first_name',
+			permissions: JSON.stringify({ id: { _eq: '$CURRENT_USER' } }),
+		});
+	}
+
+	// Defaultless accounts can use shared self-service without a content role.
+	// Anonymous callers still match no user because $CURRENT_USER is null.
+	for (const action of ['read', 'update']) {
+		permissions.push({
+			role: null,
 			namespace: 'main',
 			collection: 'directus_users',
 			action,

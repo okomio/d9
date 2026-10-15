@@ -36,8 +36,9 @@ failure. A forcibly terminated runner may leave a database with that generated p
 ## Contracts and priorities
 
 The same source contracts run with virtual namespaces disabled and with an enabled, unchanged `main` legacy context.
-Both modes use real HTTP requests and real PostgreSQL queries. A third API process exercises defaultless identity and
-content behavior. The restored Infrastructure development database is not a test target.
+Both modes use real HTTP requests and real PostgreSQL queries. Additional API processes exercise defaultless identity
+and content behavior, and instance fallback to the synthetic peer with headers disabled. The restored Infrastructure
+development database is not a test target.
 
 | Traffic rank | Priority | Executable coverage                                                                                                                                                                                                |
 | ------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -76,20 +77,34 @@ Active acceptance assertions cover:
 - Readable partitioned parent tables, inverse user relations/counts, route-casing cache checks, and local permission
   rows that must not target main-owned roles. Fresh enabled bootstrap must assign the first admin role to main without a
   fixture repair.
+- T6 owner defaults from the current primary role, including static tokens, stale JWT role claims, consistent
+  discovery/login/refresh context, main access without duplicate membership and instance fallback only without an owner
+  mapping. Defaultless tests use an account with no primary role. Revoked or unready defaults never reroute content or
+  invalidate the shared session. Another accessible namespace alone is not a default.
+
+T6 resolution is verified token claim → enabled tooling header → current owner's primary-role namespace → configured
+instance default only without an owner mapping. Headers require `VIRTUAL_NAMESPACES_ALLOW_HEADER=true` outside
+production; matching selectors are normalized and conflicts are rejected. Focused middleware unit tests additionally
+verify production ignoring headers even when enabled by configuration. This mapping does not create a saved user
+preference or introduce a database migration.
 
 Agreed policy assertions are acceptance gates: failures identify unfinished behavior in Foundation/API work. They remain
 ordinary regression tests rather than skipped cases or assertions widened to match an implementation defect.
 
 ## Recorded local result
 
-Validated on 15 October 2026 with Node 22.20.0 and PostgreSQL 16: **143 tests, 143 passed, no failures, skips or
-TODOs**. Both complete legacy contract suites and namespace acceptance pass. The original 125 assertions remain in
-place; 18 additional regression cases cover alternate transports, nested queries, bootstrap and cache freshness.
+Validated after T6 on 15 October 2026 with Node 22.20.0 and PostgreSQL 16: **149 tests, 149 passed, no failures, skips
+or TODOs**. Both complete legacy contract suites, namespace acceptance and six additional T6 regression cases pass. The
+original 143 cases remain, with defaultless fixtures updated for owner-based resolution and directory expectations
+including the new unmapped account. Output is recorded in `/tmp/d9-t6-back-compat.log`.
 
-The full API unit suite also passes: **744 passed, 2 expected failures and 1 skipped**, across 88 passing files and one
-skipped file. Its app tests require the compiled admin bundle (`npm --prefix app run build`) and local socket access.
-The API, schema inspector, shared types and admin app builds pass, as do ESLint, Prettier and whitespace checks on the
-changed files. API unit output is recorded in `/tmp/d9-api-fixes-unit.log`.
+T6 focused API validation passes **88 tests across 11 files**, covering virtual namespaces and existing authentication
+behavior. The compatibility command builds the API, schema inspector and shared types. Changed code also passes ESLint,
+Prettier and whitespace checks.
+
+Prior validation before T6 recorded a full API unit run with **744 passed, 2 expected failures and 1 skipped**, across
+88 passing files and one skipped file, plus an admin app build. That full suite was not rerun for T6. Its output remains
+in `/tmp/d9-api-fixes-unit.log`; app tests require the compiled admin bundle and local socket access.
 
 The five previously failing gates are fixed:
 
@@ -105,9 +120,9 @@ Generic GraphQL mutations retain their existing error-wrapper behavior, includin
 service denials; direct utility resolvers expose `FORBIDDEN`. The denial tests also verify unchanged database rows and
 the absence of successful mutation results. Hidden GraphQL user details return `null`; REST details return `403`.
 
-Mutating regressions use synthetic accounts and restore rows in `finally`; the entire test database is then dropped.
-Full output from the recorded run was written to `/tmp/d9-back-compat-fixes.log`. These results establish local source
-behavior, not deployed production compatibility.
+Mutating regressions use synthetic accounts and restore rows in `finally`; the entire test database is then dropped. The
+earlier pre-T6 output remains in `/tmp/d9-back-compat-fixes.log`. These results establish local source behavior, not
+deployed production compatibility.
 
 Enabled scoped response caching computes one fresh membership aggregate per cache-eligible request. The fingerprint is
 not memoized: membership changes select a new cache key, while unchanged membership retains cache hits. Requests
