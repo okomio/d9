@@ -19,11 +19,17 @@
 			:role="role"
 			:last-admin="lastAdminRoleId === role.id"
 			:active="currentRole === role.id"
+			:virtual="virtual"
 		/>
 
 		<v-divider v-if="(roles && roles.length > 0) || loading" />
 
-		<navigation-bookmark v-for="bookmark in childBookmarks" :key="bookmark.id" :bookmark="bookmark" go-to="/users" />
+		<navigation-bookmark
+			v-for="bookmark in virtual ? [] : childBookmarks"
+			:key="bookmark.id"
+			:bookmark="bookmark"
+			go-to="/users"
+		/>
 	</v-list>
 </template>
 
@@ -46,6 +52,7 @@ export default defineComponent({
 			type: String,
 			default: null,
 		},
+		virtual: { type: Boolean, default: false },
 	},
 	setup() {
 		const { t } = useI18n();

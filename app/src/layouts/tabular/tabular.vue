@@ -107,7 +107,7 @@
 			</template>
 
 			<template #header-append>
-				<v-menu placement="bottom-end" show-arrow :close-on-content-click="false">
+				<v-menu v-if="!memberView" placement="bottom-end" show-arrow :close-on-content-click="false">
 					<template #activator="{ toggle, active }">
 						<v-icon
 							v-tooltip="t('add_field')"
@@ -191,6 +191,7 @@ import { useUserStore } from '@/stores/user';
 import { HeaderRaw } from '@/components/v-table/types';
 
 interface Props {
+	memberView?: boolean;
 	collection: string;
 	selection?: Item[];
 	readonly: boolean;

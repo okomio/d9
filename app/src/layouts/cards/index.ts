@@ -6,7 +6,7 @@ import { formatCollectionItemsCount } from '@/utils/format-collection-items-coun
 import { useCollection, useItems, useSync } from '@wbce-d9/composables';
 import { defineLayout, getFieldsFromTemplate } from '@wbce-d9/utils';
 import { clone } from 'lodash';
-import { computed, ref, toRefs } from 'vue';
+import { computed, inject, ref, toRefs } from 'vue';
 import { useRoute } from 'vue-router';
 import CardsActions from './actions.vue';
 import CardsLayout from './cards.vue';
@@ -25,6 +25,7 @@ export default defineLayout<LayoutOptions, LayoutQuery>({
 		actions: CardsActions,
 	},
 	setup(props, { emit }) {
+		const memberView = inject('namespace-member-view', false);
 		const route = useRoute();
 		const relationsStore = useRelationsStore();
 
@@ -34,7 +35,12 @@ export default defineLayout<LayoutOptions, LayoutQuery>({
 
 		const { collection, filter, search, filterUser } = toRefs(props);
 
-		const { info, primaryKeyField, fields: fieldsInCollection } = useCollection(collection);
+		const { info, primaryKeyField, fields: collectionFields } = useCollection(collection);
+		const memberFields = new Set(['id', 'first_name', 'last_name', 'email', 'status']);
+
+		const fieldsInCollection = computed(() =>
+			memberView ? collectionFields.value.filter((field) => memberFields.has(field.field)) : collectionFields.value
+		);
 
 		const fileFields = computed(() => {
 			return fieldsInCollection.value.filter((field) => {
@@ -199,6 +205,7 @@ export default defineLayout<LayoutOptions, LayoutQuery>({
 		}
 
 		function getLinkForItem(item: Record<string, any>) {
+			if (memberView) return;
 			if (!primaryKeyField.value) return;
 			if (props.collection === 'directus_users' && route.path.startsWith('/global-admin/users'))
 				return `/global-admin/users/${encodeURIComponent(item[primaryKeyField.value.field])}`;
