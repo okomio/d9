@@ -29,13 +29,16 @@
 
 			<transition-expand @before-enter="filterBorder = true" @after-leave="filterBorder = false">
 				<div v-show="filterActive" ref="filterElement" class="filter">
-					<interface-system-filter
-						class="filter-input"
-						inline
-						:value="filter"
-						:collection-name="collection"
-						@input="$emit('update:filter', $event)"
-					/>
+					<slot name="filter">
+						<interface-system-filter
+							v-if="collection"
+							class="filter-input"
+							inline
+							:value="filter"
+							:collection-name="collection"
+							@input="$emit('update:filter', $event)"
+						/>
+					</slot>
 				</div>
 			</transition-expand>
 		</div>
@@ -57,7 +60,11 @@ export default defineComponent({
 		},
 		collection: {
 			type: String,
-			required: true,
+			default: null,
+		},
+		filterCount: {
+			type: Number,
+			default: null,
 		},
 		filter: {
 			type: Object as PropType<Filter>,
@@ -115,6 +122,7 @@ export default defineComponent({
 		});
 
 		const activeFilterCount = computed(() => {
+			if (props.filterCount !== null) return props.filterCount;
 			if (!props.filter) return 0;
 
 			let filterOperators: string[] = [];
