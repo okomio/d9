@@ -7,6 +7,8 @@ export function createNamespaceState(): NamespaceState {
 		active: null,
 		pending: null,
 		choices: [],
+		choicesLoading: false,
+		choicesError: null,
 		phase: 'idle',
 		epoch: 0,
 		sessionGeneration: 0,

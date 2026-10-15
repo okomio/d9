@@ -119,6 +119,7 @@ export async function hydrate(options: { strict?: boolean } = {}): Promise<void>
 
 		appStore.basemap = getBasemapSources()[0].name;
 	} catch (error: any) {
+		// A cancelled strict hydration must stop the obsolete switch attempt.
 		if (error instanceof NamespaceError && error.kind === 'cancelled') {
 			if (options.strict) throw error;
 			return;

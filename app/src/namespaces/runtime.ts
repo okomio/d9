@@ -1,6 +1,7 @@
 import { nextTick, reactive, readonly, shallowRef } from 'vue';
 import { NamespaceError, type NamespaceAdapter } from './adapter';
 import { createNamespaceAuth } from './auth';
+import { allowedDestination, isEnterableChild } from './choices';
 import { createNamespaceState } from './context';
 import { createNamespaceCoordinator, type NamespaceNavigation } from './coordinator';
 import { createNamespaceLifecycle } from './lifecycle';
@@ -92,6 +93,8 @@ export function createNamespaceRuntime(options: NamespaceRuntimeOptions) {
 		registryController?.abort();
 		const controller = new AbortController();
 		registryController = controller;
+		state.choicesLoading = true;
+		state.choicesError = null;
 		let choices;
 
 		try {
@@ -104,6 +107,8 @@ export function createNamespaceRuntime(options: NamespaceRuntimeOptions) {
 				revision !== registryRevision
 			)
 				return;
+			state.choicesLoading = false;
+			state.choicesError = error;
 			throw error;
 		}
 
@@ -114,9 +119,24 @@ export function createNamespaceRuntime(options: NamespaceRuntimeOptions) {
 			revision !== registryRevision
 		)
 			return;
-		if (new Set(choices.map((choice) => choice.namespace.id)).size !== choices.length)
-			throw new NamespaceError('contract', 'Duplicate namespace identity');
+		if (new Set(choices.map((choice) => choice.namespace.id)).size !== choices.length) {
+			const error = new NamespaceError('contract', 'Duplicate namespace identity');
+			state.choicesLoading = false;
+			state.choicesError = error;
+			throw error;
+		}
 		state.choices = choices;
+		state.choicesLoading = false;
+		state.choicesError = null;
+		// A registry/membership refresh can revoke the active child while its native view is open.
+		// Reuse the foundation's access-loss reset instead of leaving that view mounted.
+		if (
+			state.phase === 'ready' &&
+			state.active &&
+			!allowedDestination(choices, state.active.namespaceId, state.active.platform.isGlobalAdmin)
+		) {
+			await auth.rejectContext(state.active, new NamespaceError('namespace-denied', 'Active namespace access lost'));
+		}
 	}
 
 	const unsubscribe = registry.subscribe(() => {
@@ -156,15 +176,12 @@ export function createNamespaceRuntime(options: NamespaceRuntimeOptions) {
 			if (!session) return;
 			if (disposed || generation !== state.sessionGeneration) return;
 
-			const eligibleChildren = state.choices.filter(
-				(choice) =>
-					choice.namespace.kind === 'virtual' && choice.namespace.readiness === 'ready' && choice.access.canUseApp
-			);
+			const eligibleChildren = state.choices.filter(isEnterableChild);
 
 			const id = target ?? (eligibleChildren.length === 1 ? eligibleChildren[0]!.namespace.id : null);
 
 			// Do not choose the first unauthorized/unready option or silently ignore an explicit target.
-			if (!id) {
+			if (!id || !allowedDestination(state.choices, id, session.platform.isGlobalAdmin)) {
 				state.phase = 'no-access';
 				return;
 			}
@@ -192,6 +209,8 @@ export function createNamespaceRuntime(options: NamespaceRuntimeOptions) {
 		state.pending = null;
 		state.session = null;
 		state.choices = [];
+		state.choicesLoading = false;
+		state.choicesError = null;
 		state.phase = 'idle';
 		state.error = null;
 		snapshot.value = null;

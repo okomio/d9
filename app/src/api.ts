@@ -16,10 +16,8 @@ const api = axios.create({
 
 let queue = new PQueue({ concurrency: 5, intervalCap: 5, interval: 500, carryoverConcurrencyCount: true });
 
-/** Shared configuration and namespace operations remain available during a switch.
- * User reads and asset requests still carry a context ticket so stale responses are discarded.
- */
-const CONTROL_PLANE_PATHS = ['/auth', '/server', '/namespaces'];
+/** Mirrors the backend's control-plane list (api/src/virtual-namespace/paths.ts). */
+const CONTROL_PLANE_PATHS = ['/auth', '/server', '/assets', '/users/me', '/namespaces'];
 
 function isControlPlanePath(url?: string): boolean {
 	return !!url && CONTROL_PLANE_PATHS.some((prefix) => url === prefix || url.startsWith(`${prefix}/`));
@@ -131,9 +129,18 @@ export const onError = async (error: RequestError): Promise<RequestError> => {
 	if (id) requestsStore.endRequest(id);
 	if (ticket?.kind === 'write') window.setTimeout(() => ticket.finish(error), 0);
 	else ticket?.finish(error);
+	// Keep the original error: a denial, a contract break and a cancellation must stay distinct.
 	if (error instanceof NamespaceError) return Promise.reject(error);
-	if (ticket && (ticket.signal.aborted || !ticket.current()))
-		return Promise.reject(new NamespaceError('cancelled', 'Stale namespace request'));
+
+	// An aborted request is a cancellation, not a failure.
+	if (ticket && (ticket.signal.aborted || !ticket.current())) {
+		return Promise.reject(
+			new NamespaceError(
+				'cancelled',
+				ticket.signal.aborted ? 'Namespace request aborted by a switch' : 'Stale namespace request'
+			)
+		);
+	}
 
 	// If a request fails with the unauthorized error, it either means that your user doesn't have
 	// access, or that your session doesn't exist / has expired.

@@ -7,6 +7,7 @@ import { useCollection, useItems, useSync } from '@wbce-d9/composables';
 import { defineLayout, getFieldsFromTemplate } from '@wbce-d9/utils';
 import { clone } from 'lodash';
 import { computed, ref, toRefs } from 'vue';
+import { useRoute } from 'vue-router';
 import CardsActions from './actions.vue';
 import CardsLayout from './cards.vue';
 import CardsOptions from './options.vue';
@@ -24,6 +25,7 @@ export default defineLayout<LayoutOptions, LayoutQuery>({
 		actions: CardsActions,
 	},
 	setup(props, { emit }) {
+		const route = useRoute();
 		const relationsStore = useRelationsStore();
 
 		const selection = useSync(props, 'selection', emit);
@@ -198,6 +200,8 @@ export default defineLayout<LayoutOptions, LayoutQuery>({
 
 		function getLinkForItem(item: Record<string, any>) {
 			if (!primaryKeyField.value) return;
+			if (props.collection === 'directus_users' && route.path.startsWith('/global-admin/users'))
+				return `/global-admin/users/${encodeURIComponent(item[primaryKeyField.value.field])}`;
 			return `/content/${props.collection}/${encodeURIComponent(item[primaryKeyField.value.field])}`;
 		}
 

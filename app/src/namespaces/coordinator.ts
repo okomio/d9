@@ -110,13 +110,15 @@ export function createNamespaceCoordinator(options: CoordinatorOptions): Namespa
 				const destination = adapter.validateDestination(intent.destination ?? '/content', snapshot);
 				check();
 				options.publish(snapshot);
-				await navigation.finish(destination);
-				check();
 				// Resume only after complete checked hydration; failing consumers remain blocked.
 				await lifecycle.resume(state.active);
 				check();
 				state.phase = 'ready';
 				ledger.openAdmission();
+				// Native module landing routes can redirect to a collection. The target
+				// must be ready before that second router guard runs.
+				await navigation.finish(destination);
+				check();
 				return { status: 'ready', destination };
 			} catch (error) {
 				if (generation !== state.sessionGeneration || signal.aborted) return { status: 'blocked', error };
@@ -125,6 +127,7 @@ export function createNamespaceCoordinator(options: CoordinatorOptions): Namespa
 				if (committed) {
 					// Clear every partial consumer even if the legacy app never marked itself hydrated.
 					signal.throwIfAborted();
+					ledger.closeAdmission();
 					ledger.cancelReads();
 					options.publish(null);
 

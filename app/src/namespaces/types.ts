@@ -73,6 +73,8 @@ export interface NamespaceState {
 	active: ActiveNamespaceContext | null;
 	pending: NamespaceId | null;
 	choices: readonly AuthorizedNamespaceChoice[];
+	choicesLoading: boolean;
+	choicesError: unknown;
 	phase: NamespacePhase;
 	epoch: number;
 	sessionGeneration: number;
