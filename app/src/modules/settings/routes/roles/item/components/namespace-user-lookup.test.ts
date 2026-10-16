@@ -69,6 +69,35 @@ describe('role user picker data source', () => {
 		scope.stop();
 	});
 
+	test('does not reset the caller preset page when opening or changing the search', async () => {
+		const active = ref(false);
+		const page = ref(7);
+		const search = ref('');
+
+		const query = {
+			fields: ref(['id', 'email']),
+			limit: ref(20),
+			sort: ref(['email']),
+			search,
+			page,
+			filter: ref(null),
+		};
+
+		const scope = effectScope();
+
+		try {
+			scope.run(() => createNamespaceUserLookupSource(active, ref([]), vi.fn())(ref('directus_users'), query as any));
+			expect(page.value).toBe(7);
+			active.value = true;
+			await nextTick();
+			search.value = 'admin';
+			await nextTick();
+			expect(page.value).toBe(7);
+		} finally {
+			scope.stop();
+		}
+	});
+
 	test('uses the bounded namespace lookup and preserves candidates for membership assignment', async () => {
 		lookup.mockResolvedValue({
 			data: [

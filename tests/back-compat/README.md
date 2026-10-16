@@ -131,5 +131,7 @@ Representative authorized production baselines and account/default ownership map
 - Scoped asset ownership/credentials, public/share isolation, file uploads/transformations, background exports/retries,
   enabled extensions, flow/webhook dispatch and cross-process invalidation require their D07–D12 policies and fixtures.
   The included smoke checks do not establish those isolation guarantees.
-- Membership-management/provisioning/global-directory delivery and other CMS deployments are outside this suite's
-  Infrastructure compatibility scope. The existing token-mint route is used only to obtain real scoped credentials.
+- Settings membership lookup and role deletion have regression coverage for bounded search, local role identity,
+  shared-account preservation, foreign-role denial, and last-admin protection. Broader
+  membership-management/provisioning/global-directory delivery and other CMS deployments remain outside this suite's
+  Infrastructure compatibility scope. The existing token-mint route obtains real scoped credentials.

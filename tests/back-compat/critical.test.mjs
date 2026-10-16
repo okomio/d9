@@ -1190,15 +1190,18 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 			const [denial] = response.body?.errors ?? [];
 
 			assert.equal(response.body?.errors?.length, 1, 'A shared-account mutation must return exactly one error');
+
 			assert.equal(
 				denial?.message,
 				FORBIDDEN_MESSAGE,
 				'The error must be the authorization denial, not an internal failure'
 			);
+
 			assert.ok(
 				['FORBIDDEN', 'INTERNAL_SERVER_ERROR'].includes(denial?.extensions?.code),
 				`Expected a denial code, received ${denial?.extensions?.code}`
 			);
+
 			assert.equal(response.body.data?.update_users_item, null);
 		} finally {
 			await fixture.database('directus_users').where({ id }).update({ first_name: original.first_name });
@@ -1336,6 +1339,125 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 			original,
 			'The denied write must leave the role unchanged'
 		);
+	});
+
+	it('Settings lookup requires search and returns the selected namespace role only', async () => {
+		const token = await scoped('localAdmin');
+		const path = `/namespaces/${peer.id}/members/lookup`;
+		error(await fixture.request('legacy', path, { token }), 400, 'INVALID_PAYLOAD');
+
+		const candidates = ok(
+			await fixture.request('legacy', path, { token, query: { search: 'member@compat.example.com', limit: 1000 } })
+		).data;
+
+		assert.equal(candidates.length, 1);
+		assert.equal(candidates[0].user_id, fixture.data.users.member);
+		assert.equal(candidates[0].role_id, fixture.data.roles.peerReader);
+
+		assert.deepEqual(Object.keys(candidates[0]).sort(), [
+			'email',
+			'first_name',
+			'last_name',
+			'role_id',
+			'status',
+			'user_id',
+		]);
+
+		const outsider = ok(
+			await fixture.request('legacy', path, { token, query: { search: 'outsider@compat.example.com' } })
+		).data;
+
+		assert.equal(outsider[0].user_id, fixture.data.users.outsider);
+		assert.equal(outsider[0].role_id, null);
+
+		error(
+			await fixture.request('legacy', path, { token: await scoped('member'), query: { search: 'member' } }),
+			403,
+			'FORBIDDEN'
+		);
+	});
+
+	it('deleting a local Settings role removes membership without changing the shared account', async () => {
+		const token = await scoped('localAdmin');
+		const user = fixture.data.users.outsider;
+		const original = await fixture.database('directus_users').where({ id: user }).first();
+
+		const role = ok(
+			await fixture.request('legacy', '/roles', {
+				method: 'POST',
+				token,
+				body: { name: 'Settings deletion regression', app_access: true, admin_access: false },
+			})
+		).data.id;
+
+		try {
+			const added = await fixture.request('legacy', `/namespaces/${peer.id}/members`, {
+				method: 'POST',
+				token,
+				body: { user_id: user, role_id: role },
+			});
+
+			assert.equal(added.status, 204);
+
+			const deleted = await fixture.request('legacy', `/roles/${role}`, { method: 'DELETE', token });
+			assert.equal(deleted.status, 204);
+			assert.equal(await fixture.database('directus_roles').where({ id: role }).first(), undefined);
+
+			assert.equal(
+				await fixture.database('directus_user_namespaces').where({ namespace_id: peer.id, user_id: user }).first(),
+				undefined
+			);
+
+			const after = await fixture.database('directus_users').where({ id: user }).first();
+			assert.equal(after.status, original.status);
+			assert.equal(after.role, original.role);
+		} finally {
+			await fixture.database('directus_user_namespaces').where({ namespace_id: peer.id, user_id: user }).delete();
+			await fixture.database('directus_roles').where({ id: role }).delete();
+		}
+	});
+
+	it('Settings role deletion protects foreign roles and the last local admin membership', async () => {
+		const token = await scoped('localAdmin');
+		const mainRole = fixture.data.roles.outsider;
+		error(await fixture.request('legacy', `/roles/${mainRole}`, { method: 'DELETE', token }), 403, 'FORBIDDEN');
+		assert.ok(await fixture.database('directus_roles').where({ id: mainRole }).first());
+
+		const adminRole = fixture.data.roles.localAdmin;
+
+		error(
+			await fixture.request('legacy', `/roles/${adminRole}`, { method: 'DELETE', token }),
+			422,
+			'UNPROCESSABLE_ENTITY'
+		);
+
+		const spare = ok(
+			await fixture.request('legacy', '/roles', {
+				method: 'POST',
+				token,
+				body: { name: 'Unassigned Settings admin', app_access: true, admin_access: true },
+			})
+		).data.id;
+
+		try {
+			// Another admin role exists, but it has no member to retain administration.
+			error(
+				await fixture.request('legacy', `/roles/${adminRole}`, { method: 'DELETE', token }),
+				422,
+				'UNPROCESSABLE_ENTITY'
+			);
+
+			assert.ok(await fixture.database('directus_roles').where({ id: adminRole }).first());
+
+			assert.ok(
+				await fixture
+					.database('directus_user_namespaces')
+					.where({ namespace_id: peer.id, user_id: fixture.data.users.localAdmin })
+					.first()
+			);
+		} finally {
+			await fixture.database('directus_roles').where({ id: spare }).delete();
+		}
 	});
 
 	it('local permission rows cannot grant privileges to a role owned by main', async () => {
@@ -1645,6 +1767,7 @@ describe('Namespace acceptance: synthetic peer, unchanged Infrastructure context
 			[`/Namespaces/${peer.id}/members`, {}],
 			[`/Namespaces/${peer.id}/members/lookup`, { search: 'compat' }],
 		];
+
 		const options = { token, headers: { 'x-namespace': 'main' } };
 
 		try {
