@@ -9,7 +9,7 @@ describe('isControlPlanePath', () => {
 		expect(isControlPlanePath('/users/me/track/page')).toBe(true);
 		expect(isControlPlanePath('/namespaces')).toBe(true);
 		expect(isControlPlanePath('/namespaces/ns_a/token')).toBe(true);
-		expect(isControlPlanePath('/assets/abc')).toBe(true);
+		expect(isControlPlanePath('/assets/abc')).toBe(false);
 		expect(isControlPlanePath('/server/info')).toBe(true);
 	});
 

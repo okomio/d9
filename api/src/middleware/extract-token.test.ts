@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { beforeEach, expect, test, vi } from 'vitest';
 import extractToken from '../../src/middleware/extract-token.js';
+import env from '../../src/env.js';
 import '../../src/types/express.d.ts';
 
 let mockRequest: Partial<Request & { token?: string }>;
@@ -23,6 +24,17 @@ test('Token from query', () => {
 	extractToken(mockRequest as Request, mockResponse as Response, nextFunction);
 	expect(mockRequest.token).toBe('test');
 	expect(nextFunction).toBeCalledTimes(1);
+});
+
+test('Explicit asset token wins over a cookie from another tab', () => {
+	mockRequest = {
+		query: { access_token: 'child-token' },
+		cookies: { [env['ACCESS_TOKEN_COOKIE_NAME'] as string]: 'main-token' },
+		path: '/assets/file-id',
+		method: 'GET',
+	};
+	extractToken(mockRequest as Request, mockResponse as Response, nextFunction);
+	expect(mockRequest.token).toBe('child-token');
 });
 
 test('Token from Authorization header (capitalized)', () => {

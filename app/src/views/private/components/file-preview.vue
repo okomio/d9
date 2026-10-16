@@ -19,7 +19,8 @@
 <script lang="ts" setup>
 import { ref, computed } from 'vue';
 import { readableMimeType } from '@/utils/readable-mime-type';
-import { getRootPath } from '@/utils/get-root-path';
+import { getPublicURL } from '@/utils/get-root-path';
+import { withAssetToken } from '@/utils/get-asset-url';
 
 interface Props {
 	mime: string;
@@ -59,7 +60,7 @@ const isSVG = computed(() => props.mime.includes('svg'));
 const maxHeight = computed(() => Math.min(props.height ?? 528, 528) + 'px');
 const isSmall = computed(() => props.height < 528);
 
-const src = computed(() => getRootPath() + props.src);
+const src = computed(() => withAssetToken(new URL(props.src, getPublicURL()).href));
 </script>
 
 <style lang="scss" scoped>

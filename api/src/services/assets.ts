@@ -21,6 +21,8 @@ import type { AbstractServiceOptions, File, Transformation, TransformationParams
 import { getMilliseconds } from '../utils/get-milliseconds.js';
 import * as TransformationUtils from '../utils/transformations.js';
 import { AuthorizationService } from './authorization.js';
+import { getActiveNamespaceId } from '../virtual-namespace/context.js';
+import { isVirtualNamespaceEnabled } from '../virtual-namespace/config.js';
 
 export class AssetsService {
 	knex: Knex;
@@ -63,6 +65,12 @@ export class AssetsService {
 		const file = (await this.knex.select('*').from('directus_files').where({ id }).first()) as File;
 
 		if (!file) throw new ForbiddenException();
+		if (
+			isVirtualNamespaceEnabled() &&
+			(file as File & { namespace?: string }).namespace !== (getActiveNamespaceId() ?? 'main') &&
+			systemPublicKeys.includes(id) === false
+		)
+			throw new ForbiddenException();
 
 		const exists = await storage.location(file.storage).exists(file.filename_disk);
 

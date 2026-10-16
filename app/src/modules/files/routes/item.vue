@@ -268,6 +268,7 @@ const fieldsDenyList: string[] = [
 	'folder',
 	'charset',
 	'embed',
+	'namespace',
 ];
 
 const to = computed(() => {

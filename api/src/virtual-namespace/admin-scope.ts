@@ -4,8 +4,8 @@
  * A namespace admin legitimately needs admin rights over their *namespace*:
  * schema, flows, webhooks, presets, dashboards, the content in it, and now its
  * own roles and permissions. What they must not get is authority over the shared
- * control plane, because that is instance-wide: users, settings and files are one
- * set of rows shared by every namespace.
+ * control plane, because that is instance-wide: users and settings are shared.
+ * Files and folders have row owners and are guarded in the service layer.
  *
  * This guard exists because `admin_access` is a single boolean meaning "skip ACL
  * checks" everywhere. Before it, a local admin could read the whole user
@@ -19,7 +19,7 @@
  */
 
 /** Writes that are never available to a namespace-scoped admin. */
-const ALWAYS_BLOCKED = ['/users', '/settings', '/files'];
+const ALWAYS_BLOCKED = ['/users', '/settings'];
 
 /**
  * Writes to namespace-owned rows. These carry a `namespace` column, so the

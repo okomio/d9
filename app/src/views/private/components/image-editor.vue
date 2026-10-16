@@ -130,6 +130,7 @@ import { useI18n } from 'vue-i18n';
 
 import { useSettingsStore } from '@/stores/settings';
 import { getRootPath } from '@/utils/get-root-path';
+import { withAssetToken } from '@/utils/get-asset-url';
 import { unexpectedError } from '@/utils/unexpected-error';
 import Cropper from 'cropperjs';
 import throttle from 'lodash/throttle';
@@ -204,7 +205,7 @@ export default defineComponent({
 		const randomId = ref<string>(nanoid());
 
 		const imageURL = computed(() => {
-			return `${getRootPath()}assets/${props.id}?${randomId.value}`;
+			return withAssetToken(`${getRootPath()}assets/${props.id}?${randomId.value}`);
 		});
 
 		const dimensionsString = computed(() => {

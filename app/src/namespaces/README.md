@@ -25,10 +25,10 @@ frontend URL hint. The static `/namespace/loading`, `/namespace/choose`, `/names
 exist before dynamic Directus modules are registered. The existing native Content module is hydrated under the selected
 token. Settings keeps its native screens: namespace-owned Data Model, local Roles & Permissions, Presets, Flows and
 Webhooks are available to effective namespace admins; Project Settings is hidden from callers without platform settings
-authority, and Translation Strings are read-only for child admins pending D09. Native Users and Files are withheld in
-virtual namespaces until child-scoped backend reads and writes exist; the native Activity module is also withheld until
-the shared audit feed is filtered by namespace. See `RFD/frontend/virtual-namespace-settings-status.md` for the
-remaining Settings gaps.
+authority, and Translation Strings are read-only for child admins pending D09. Native Users and Files use scoped backend
+reads and writes in virtual namespaces; the native Activity module is withheld until the shared audit feed is filtered
+by namespace. See `RFD/frontend/virtual-namespace-settings-status.md` for the remaining Settings gaps and
+`RFD/frontend/file-library-namespace-status.md` for File Library ownership and rollout.
 
 Views and extensions can register dirty, pause, reset, resume, and dispose hooks through `runtime.lifecycle`.
 `useSystem()` provides `{ getRuntime }` under the `namespace-runtime` injection key. Axios requests are admitted with a

@@ -5,6 +5,15 @@ import { ForbiddenException } from '../exceptions/index.js';
 import type { AbstractServiceOptions } from '../types/index.js';
 import { applyFilter, applySearch } from '../utils/apply-query.js';
 import { applySharedUserReadScope } from '../virtual-namespace/user-read-scope.js';
+import { getActiveNamespaceId } from '../virtual-namespace/context.js';
+import { isVirtualNamespaceEnabled } from '../virtual-namespace/config.js';
+
+function limitFileLibraryCount(collection: string, query: Knex.QueryBuilder): void {
+	const namespace = getActiveNamespaceId() ?? (isVirtualNamespaceEnabled() ? 'main' : undefined);
+	if (namespace && (collection === 'directus_files' || collection === 'directus_folders')) {
+		query.where(`${collection}.namespace`, namespace);
+	}
+}
 
 export class MetaService {
 	knex: Knex;
@@ -43,6 +52,7 @@ export class MetaService {
 			this.knex(collection).count('*', { as: 'count' }).first(),
 			this.accountability
 		);
+		limitFileLibraryCount(collection, dbQuery);
 
 		if (this.accountability?.admin !== true) {
 			const permissionsRecord = this.accountability?.permissions?.find((permission) => {
@@ -67,6 +77,7 @@ export class MetaService {
 			this.knex(collection).count('*', { as: 'count' }),
 			this.accountability
 		);
+		limitFileLibraryCount(collection, dbQuery);
 
 		let filter = query.filter || {};
 

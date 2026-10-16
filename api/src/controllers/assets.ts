@@ -17,6 +17,7 @@ import asyncHandler from '../utils/async-handler.js';
 import { getCacheControlHeader } from '../utils/get-cache-headers.js';
 import { getConfigFromEnv } from '../utils/get-config-from-env.js';
 import { getMilliseconds } from '../utils/get-milliseconds.js';
+import { isVirtualNamespaceEnabled } from '../virtual-namespace/config.js';
 
 const router = Router();
 
@@ -143,6 +144,7 @@ router.get(
 		});
 
 		const vary = ['Origin', 'Cache-Control'];
+		if (isVirtualNamespaceEnabled()) vary.push('Authorization', 'Cookie');
 
 		const transformation: TransformationParams = res.locals['transformation'].key
 			? (res.locals['shortcuts'] as TransformationParams[]).find(
