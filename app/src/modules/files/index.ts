@@ -2,6 +2,7 @@ import { defineModule } from '@wbce-d9/utils';
 import AddNew from './routes/add-new.vue';
 import Collection from './routes/collection.vue';
 import Item from './routes/item.vue';
+import { getNamespaceRuntime } from '@/namespaces/live';
 
 export default defineModule({
 	id: 'files',
@@ -70,7 +71,9 @@ export default defineModule({
 		},
 	],
 	preRegisterCheck(user, permissions) {
-		const admin = user.role.admin_access;
+		const active = getNamespaceRuntime()?.state.active;
+		if (active?.namespace.kind === 'virtual' && active.access.isNamespaceAdmin) return true;
+		const admin = user.role?.admin_access;
 		if (admin) return true;
 
 		const permission = permissions.find(

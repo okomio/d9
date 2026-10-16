@@ -8,8 +8,8 @@ describe('isAlwaysBlockedWrite', () => {
 		expect(isAlwaysBlockedWrite('POST', '/users')).toBe(true);
 		expect(isAlwaysBlockedWrite('PATCH', '/users/abc')).toBe(true);
 		expect(isAlwaysBlockedWrite('PATCH', '/settings')).toBe(true);
-		expect(isAlwaysBlockedWrite('POST', '/files')).toBe(true);
-		expect(isAlwaysBlockedWrite('DELETE', '/files/abc')).toBe(true);
+		expect(isAlwaysBlockedWrite('POST', '/files')).toBe(false);
+		expect(isAlwaysBlockedWrite('DELETE', '/files/abc')).toBe(false);
 	});
 
 	test('leaves reads to service-level membership and permission checks', () => {

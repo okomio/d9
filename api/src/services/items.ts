@@ -7,7 +7,11 @@ import { getCache } from '../cache.js';
 import { getHelpers } from '../database/helpers/index.js';
 import getDatabase from '../database/index.js';
 import { limitToNamespace, stampNamespace } from '../virtual-namespace/scope.js';
-import { assertNamespaceOwnedWrite, assertSharedWrite } from '../virtual-namespace/authority.js';
+import {
+	assertFileLibraryWrite,
+	assertNamespaceOwnedWrite,
+	assertSharedWrite,
+} from '../virtual-namespace/authority.js';
 import type { SharedUserScope } from '../virtual-namespace/user-read-scope.js';
 import runAST from '../database/run-ast.js';
 import emitter from '../emitter.js';
@@ -97,6 +101,7 @@ export class ItemsService<Item extends AnyItem = AnyItem> implements AbstractSer
 	 */
 	async createOne(data: Partial<Item>, opts: MutationOptions = {}): Promise<PrimaryKey> {
 		assertSharedWrite(this.collection, this.accountability);
+		await assertFileLibraryWrite(this.knex, this.collection, data);
 		await assertNamespaceOwnedWrite(this.knex, this.collection, this.accountability, data);
 		// Stamp the owning namespace, so a role, permission, activity or revision
 		// record created in an area belongs to that area rather than to none.
@@ -178,8 +183,10 @@ export class ItemsService<Item extends AnyItem = AnyItem> implements AbstractSer
 				revisions: revisionsA2O,
 				nestedActionEvents: nestedActionEventsA2O,
 			} = await payloadService.processA2O(payloadWithM2O, opts);
+			const ownedPayload = stampNamespace(this.collection, payloadWithA2O);
+			await assertFileLibraryWrite(trx, this.collection, ownedPayload);
 
-			const payloadWithoutAliases = pick(payloadWithA2O, without(fields, ...aliases));
+			const payloadWithoutAliases = pick(ownedPayload, without(fields, ...aliases));
 			const payloadWithTypeCasting = await payloadService.processValues('create', payloadWithoutAliases);
 
 			// In case of manual string / UUID primary keys, the PK already exists in the object we're saving.
@@ -372,8 +379,6 @@ export class ItemsService<Item extends AnyItem = AnyItem> implements AbstractSer
 		// Limit reads of the shared tables that carry a namespace column. Applied
 		// here because every one of them is read through this service, and
 		// readOne/readMany delegate to it.
-		query = limitToNamespace(this.collection, query);
-
 		const updatedQuery =
 			opts?.emitEvents !== false
 				? await emitter.emitFilter(
@@ -392,7 +397,9 @@ export class ItemsService<Item extends AnyItem = AnyItem> implements AbstractSer
 				  )
 				: query;
 
-		let ast = await getASTFromQuery(this.collection, updatedQuery, this.schema, {
+		// Apply ownership after extension filters so a hook cannot broaden the result.
+		const scopedQuery = limitToNamespace(this.collection, updatedQuery);
+		let ast = await getASTFromQuery(this.collection, scopedQuery, this.schema, {
 			accountability: this.accountability,
 			// By setting the permissions action, you can read items using the permissions for another
 			// operation's permissions. This is used to dynamically check if you have update/delete
@@ -563,6 +570,7 @@ export class ItemsService<Item extends AnyItem = AnyItem> implements AbstractSer
 	 */
 	async updateMany(keys: PrimaryKey[], data: Partial<Item>, opts: MutationOptions = {}): Promise<PrimaryKey[]> {
 		assertSharedWrite(this.collection, this.accountability);
+		await assertFileLibraryWrite(this.knex, this.collection, data, keys);
 		await assertNamespaceOwnedWrite(this.knex, this.collection, this.accountability, data, keys);
 		if (!opts.mutationTracker) opts.mutationTracker = this.createMutationTracker();
 
@@ -645,6 +653,7 @@ export class ItemsService<Item extends AnyItem = AnyItem> implements AbstractSer
 				revisions: revisionsA2O,
 				nestedActionEvents: nestedActionEventsA2O,
 			} = await payloadService.processA2O(payloadWithM2O, opts);
+			await assertFileLibraryWrite(trx, this.collection, payloadWithA2O, keys);
 
 			const payloadWithoutAliasAndPK = pick(payloadWithA2O, without(fields, primaryKeyField, ...aliases));
 			const payloadWithTypeCasting = await payloadService.processValues('update', payloadWithoutAliasAndPK);
@@ -867,6 +876,7 @@ export class ItemsService<Item extends AnyItem = AnyItem> implements AbstractSer
 	 */
 	async deleteMany(keys: PrimaryKey[], opts: MutationOptions = {}): Promise<PrimaryKey[]> {
 		assertSharedWrite(this.collection, this.accountability);
+		await assertFileLibraryWrite(this.knex, this.collection, undefined, keys);
 		await assertNamespaceOwnedWrite(this.knex, this.collection, this.accountability, undefined, keys);
 		if (!opts.mutationTracker) opts.mutationTracker = this.createMutationTracker();
 

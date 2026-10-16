@@ -1,20 +1,22 @@
 import type { Query } from '@wbce-d9/types';
 import { getActiveNamespaceId } from './context.js';
+import { isVirtualNamespaceEnabled } from './config.js';
 
 /**
  * Shared control-plane tables that carry a `namespace` column.
  *
  * These are the tables a namespace must not read across: without the column a
  * namespace returned every area's roles, permissions and audit records.
- * `directus_users`, `directus_files` and `directus_settings` are deliberately
- * absent — those are shared by design, and their visibility rules are separate
- * open questions (D07, D09).
+ * Files and folders remain in shared storage, but each row has one owner.
+ * Users and settings have separate visibility rules.
  */
 export const NAMESPACE_SCOPED_TABLES = [
 	'directus_activity',
 	'directus_permissions',
 	'directus_revisions',
 	'directus_roles',
+	'directus_files',
+	'directus_folders',
 ];
 
 const SCOPED = new Set(NAMESPACE_SCOPED_TABLES);
@@ -22,12 +24,16 @@ const SCOPED = new Set(NAMESPACE_SCOPED_TABLES);
 /**
  * The namespace a query should be limited to, or undefined for no limitation.
  *
- * Undefined outside a request, which keeps the legacy single-context behaviour
- * byte-identical — including for the main namespace, whose id happens to match
- * the backfill value but must not be assumed.
+ * Public file requests and trusted work without a request context use main;
+ * an anonymous asset URL must never expose a child-owned file.
  */
-function activeScope(): string | undefined {
-	return getActiveNamespaceId();
+function activeScope(collection: string): string | undefined {
+	return (
+		getActiveNamespaceId() ??
+		(isVirtualNamespaceEnabled() && (collection === 'directus_files' || collection === 'directus_folders')
+			? 'main'
+			: undefined)
+	);
 }
 
 /**
@@ -41,24 +47,25 @@ function activeScope(): string | undefined {
  * `directus_permissions` with a direct knex query, not through `ItemsService`.
  */
 export function limitToNamespace(collection: string, query: Query): Query {
-	const namespace = activeScope();
+	const namespace = activeScope(collection);
 
 	if (!namespace || !SCOPED.has(collection)) return query;
 
-	const filter = query.filter ? { _and: [query.filter, { namespace: { _eq: namespace } }] } : { namespace: { _eq: namespace } };
+	const filter = query.filter
+		? { _and: [query.filter, { namespace: { _eq: namespace } }] }
+		: { namespace: { _eq: namespace } };
 
 	return { ...query, filter };
 }
 
 /**
- * Stamps the active namespace onto a row being written, so a new role,
- * permission, activity or revision record belongs to the area it was created in
- * rather than to no area at all.
+ * Stamps the active namespace onto a row being written, including files and
+ * folders in shared storage.
  *
  * Callers may still set it explicitly.
  */
 export function stampNamespace<T extends Record<string, any>>(collection: string, data: T): T {
-	const namespace = activeScope();
+	const namespace = activeScope(collection);
 
 	if (!namespace || !SCOPED.has(collection) || data['namespace']) return data;
 

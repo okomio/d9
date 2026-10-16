@@ -7,6 +7,10 @@ fields:
     special:
       - uuid
 
+  - field: namespace
+    hidden: true
+    readonly: true
+
   - field: title
     interface: input
     options:

@@ -56,8 +56,38 @@ export function assertSharedWrite(collection: string, accountability: Accountabi
 		return;
 	}
 
-	if (collection === 'directus_users' || collection === 'directus_settings' || collection === 'directus_files') {
+	if (collection === 'directus_users' || collection === 'directus_settings') {
 		throw new ForbiddenException();
+	}
+}
+
+/** Shared storage never grants cross-namespace access to a file or folder. */
+export async function assertFileLibraryWrite(
+	database: Knex,
+	collection: string,
+	data?: Record<string, unknown>,
+	keys?: (string | number)[]
+): Promise<void> {
+	if (!isVirtualNamespaceEnabled() || !['directus_files', 'directus_folders'].includes(collection)) return;
+	const namespace = getActiveNamespaceId() ?? 'main';
+
+	if (data && Object.hasOwn(data, 'namespace') && data['namespace'] !== namespace) throw new ForbiddenException();
+
+	if (keys?.length) {
+		const owned = await database(collection)
+			.whereIn('id', keys)
+			.where('namespace', namespace)
+			.count('* as count')
+			.first();
+		if (Number(owned?.['count'] ?? 0) !== new Set(keys.map(String)).size) throw new ForbiddenException();
+	}
+
+	const relation = collection === 'directus_files' ? 'folder' : 'parent';
+	const folder = data?.[relation];
+	if (folder !== undefined && folder !== null) {
+		if (typeof folder !== 'string') throw new ForbiddenException();
+		const target = await database('directus_folders').select('namespace').where('id', folder).first();
+		if (target?.namespace !== namespace) throw new ForbiddenException();
 	}
 }
 

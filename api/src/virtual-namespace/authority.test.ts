@@ -4,6 +4,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ForbiddenException } from '../exceptions/index.js';
 import {
 	assertNamespaceOwnedWrite,
+	assertFileLibraryWrite,
 	assertSharedWrite,
 	hasGlobalAuthority,
 	resolveSharedAccountability,
@@ -77,19 +78,50 @@ describe('shared authority', () => {
 		expect(result).toMatchObject({ role: 'share-role', admin: false, globalAdmin: false });
 	});
 
-	test('blocks local admin shared writes while preserving local content and trusted work', () => {
+	test('blocks instance-wide writes but permits owner-checked file writes', () => {
 		vi.stubEnv('VIRTUAL_NAMESPACES_ENABLED', 'true');
 
 		runWithNamespace({ id: 'child', schema: 'ns_child' }, () => {
 			const local = { role: 'local-admin', admin: true, globalAdmin: false };
 
-			for (const collection of ['directus_users', 'directus_settings', 'directus_files']) {
+			for (const collection of ['directus_users', 'directus_settings']) {
 				expect(() => assertSharedWrite(collection, local)).toThrow(ForbiddenException);
 				expect(() => assertSharedWrite(collection, null)).not.toThrow();
 				expect(() => assertSharedWrite(collection, { ...local, globalAdmin: true })).not.toThrow();
 			}
 
 			expect(() => assertSharedWrite('content', local)).not.toThrow();
+			expect(() => assertSharedWrite('directus_files', local)).not.toThrow();
+		});
+	});
+
+	test('file and folder writes reject foreign rows, foreign parents and owner changes', async () => {
+		vi.stubEnv('VIRTUAL_NAMESPACES_ENABLED', 'true');
+		const query = {
+			whereIn: vi.fn().mockReturnThis(),
+			where: vi.fn().mockReturnThis(),
+			select: vi.fn().mockReturnThis(),
+			count: vi.fn().mockReturnThis(),
+			first: vi.fn(),
+		};
+		const database = vi.fn(() => query) as unknown as Knex;
+
+		await runWithNamespace({ id: 'child', schema: 'ns_child' }, async () => {
+			query.first.mockResolvedValueOnce({ count: '0' });
+			await expect(assertFileLibraryWrite(database, 'directus_files', {}, ['foreign-file'])).rejects.toThrow(
+				ForbiddenException
+			);
+			await expect(assertFileLibraryWrite(database, 'directus_files', { namespace: 'main' })).rejects.toThrow(
+				ForbiddenException
+			);
+			query.first.mockResolvedValueOnce({ namespace: 'main' });
+			await expect(assertFileLibraryWrite(database, 'directus_folders', { parent: 'foreign-folder' })).rejects.toThrow(
+				ForbiddenException
+			);
+			query.first.mockResolvedValueOnce({ count: '1' }).mockResolvedValueOnce({ namespace: 'child' });
+			await expect(
+				assertFileLibraryWrite(database, 'directus_files', { folder: 'child-folder' }, ['child-file'])
+			).resolves.toBeUndefined();
 		});
 	});
 

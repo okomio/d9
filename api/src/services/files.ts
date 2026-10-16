@@ -21,7 +21,9 @@ import { getStorage } from '../storage/index.js';
 import type { AbstractServiceOptions, File, Metadata, MutationOptions, PrimaryKey } from '../types/index.js';
 import { parseIptc, parseXmp } from '../utils/parse-image-metadata.js';
 import { ItemsService } from './items.js';
-import { assertSharedWrite } from '../virtual-namespace/authority.js';
+import { assertFileLibraryWrite } from '../virtual-namespace/authority.js';
+import { getActiveNamespaceId } from '../virtual-namespace/context.js';
+import { isVirtualNamespaceEnabled } from '../virtual-namespace/config.js';
 
 export class FilesService extends ItemsService {
 	constructor(options: AbstractServiceOptions) {
@@ -37,7 +39,7 @@ export class FilesService extends ItemsService {
 		primaryKey?: PrimaryKey,
 		opts?: MutationOptions
 	): Promise<PrimaryKey> {
-		assertSharedWrite(this.collection, this.accountability);
+		await assertFileLibraryWrite(this.knex, this.collection, data, primaryKey === undefined ? undefined : [primaryKey]);
 		const storage = await getStorage();
 
 		let existingFile = {};
@@ -57,7 +59,14 @@ export class FilesService extends ItemsService {
 			const settings = await this.knex.select('storage_default_folder').from('directus_settings').first();
 
 			if (settings?.storage_default_folder) {
-				payload.folder = settings.storage_default_folder;
+				const defaultFolder = settings.storage_default_folder;
+				const ownedDefault =
+					!isVirtualNamespaceEnabled() ||
+					(await this.knex('directus_folders')
+						.select('id')
+						.where({ id: defaultFolder, namespace: getActiveNamespaceId() ?? 'main' })
+						.first());
+				if (ownedDefault) payload.folder = defaultFolder;
 			}
 		}
 
@@ -262,7 +271,7 @@ export class FilesService extends ItemsService {
 	 * Import a single file from an external URL
 	 */
 	async importOne(importURL: string, body: Partial<File>): Promise<PrimaryKey> {
-		assertSharedWrite(this.collection, this.accountability);
+		await assertFileLibraryWrite(this.knex, this.collection, body);
 
 		const fileCreatePermissions = this.accountability?.permissions?.find(
 			(permission) => permission.collection === 'directus_files' && permission.action === 'create'
@@ -326,7 +335,7 @@ export class FilesService extends ItemsService {
 	 * Delete multiple files
 	 */
 	override async deleteMany(keys: PrimaryKey[], opts?: MutationOptions): Promise<PrimaryKey[]> {
-		assertSharedWrite(this.collection, this.accountability);
+		await assertFileLibraryWrite(this.knex, this.collection, undefined, keys);
 		const storage = await getStorage();
 		const files = await super.readMany(keys, { fields: ['id', 'storage'], limit: -1 });
 

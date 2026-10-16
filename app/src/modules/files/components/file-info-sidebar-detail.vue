@@ -67,7 +67,9 @@
 			<div>
 				<dt>{{ t('file') }}</dt>
 				<dd>
-					<a :href="fileLink" target="_blank">{{ t('open_in_new_window') }}</a>
+					<a v-asset-grant-link="fileLink" :href="fileLink" target="_blank" @click.prevent="openAsset(file.id)">
+						{{ t('open_in_new_window') }}
+					</a>
 				</dd>
 			</div>
 
@@ -133,6 +135,7 @@ import { formatFilesize } from '@/utils/format-filesize';
 import { localizedFormat } from '@/utils/localized-format';
 import api from '@/api';
 import { getRootPath } from '@/utils/get-root-path';
+import { openAsset } from '@/utils/get-asset-url';
 import { userName } from '@/utils/user-name';
 
 export default defineComponent({
@@ -178,6 +181,7 @@ export default defineComponent({
 			folderLink,
 			getRootPath,
 			fileLink,
+			openAsset,
 		};
 
 		function useDates() {

@@ -18,6 +18,14 @@ const extractToken: RequestHandler = (req, _res, next) => {
 		token = req.query['access_token'] as string;
 	}
 
+	if (
+		req.method === 'GET' &&
+		/^\/assets\/[0-9a-f-]{36}$/i.test(req.path) &&
+		typeof req.query?.['asset_grant'] === 'string'
+	) {
+		token = req.query['asset_grant'];
+	}
+
 	if (req.headers && req.headers.authorization) {
 		const parts = req.headers.authorization.split(' ');
 
@@ -32,7 +40,8 @@ const extractToken: RequestHandler = (req, _res, next) => {
 	if (
 		req?.cookies?.[env['ACCESS_TOKEN_COOKIE_NAME'] as string] &&
 		req.path.startsWith('/assets/') &&
-		req.method === 'GET'
+		req.method === 'GET' &&
+		!token
 	) {
 		token = req.cookies[env['ACCESS_TOKEN_COOKIE_NAME'] as string];
 	}

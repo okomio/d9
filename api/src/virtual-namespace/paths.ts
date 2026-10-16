@@ -11,7 +11,7 @@
  * import from here, so a path added on one side has to be added on the other, or
  * the frontend scopes a request the backend answers from the shared schema.
  */
-const CONTROL_PLANE_PATHS = ['/auth', '/server', '/assets', '/users/me', '/namespaces'];
+const CONTROL_PLANE_PATHS = ['/auth', '/server', '/users/me', '/namespaces'];
 
 function isSameOrChildPath(path: string, prefix: string): boolean {
 	return path === prefix || path.startsWith(`${prefix}/`);

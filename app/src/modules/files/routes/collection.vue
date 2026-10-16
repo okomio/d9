@@ -489,7 +489,7 @@ export default defineComponent({
 
 		function usePermissions() {
 			const batchEditAllowed = computed(() => {
-				const admin = userStore?.currentUser?.role.admin_access === true;
+				const admin = userStore.isAdmin;
 				if (admin) return true;
 
 				const updatePermissions = permissionsStore.permissions.find(
@@ -500,7 +500,7 @@ export default defineComponent({
 			});
 
 			const batchDeleteAllowed = computed(() => {
-				const admin = userStore?.currentUser?.role.admin_access === true;
+				const admin = userStore.isAdmin;
 				if (admin) return true;
 
 				const deletePermissions = permissionsStore.permissions.find(
@@ -511,7 +511,7 @@ export default defineComponent({
 			});
 
 			const createAllowed = computed(() => {
-				const admin = userStore?.currentUser?.role.admin_access === true;
+				const admin = userStore.isAdmin;
 				if (admin) return true;
 
 				const createPermissions = permissionsStore.permissions.find(
@@ -522,7 +522,7 @@ export default defineComponent({
 			});
 
 			const createFolderAllowed = computed(() => {
-				const admin = userStore?.currentUser?.role.admin_access === true;
+				const admin = userStore.isAdmin;
 				if (admin) return true;
 
 				const createPermissions = permissionsStore.permissions.find(

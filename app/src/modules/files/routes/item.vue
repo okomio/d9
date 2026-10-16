@@ -67,11 +67,13 @@
 			</v-dialog>
 			<v-button
 				v-tooltip.bottom="t('download')"
+				v-asset-grant-link="getAssetUrl(props.primaryKey, true)"
 				secondary
 				icon
 				rounded
 				:download="item?.filename_download"
 				:href="getAssetUrl(props.primaryKey, true)"
+				@click.prevent="openAsset(props.primaryKey, true, item?.filename_download)"
 			>
 				<v-icon name="download" />
 			</v-button>
@@ -187,7 +189,7 @@ import { useEditsGuard } from '@/composables/use-edits-guard';
 import { useItem } from '@/composables/use-item';
 import { usePermissions } from '@/composables/use-permissions';
 import { useShortcut } from '@/composables/use-shortcut';
-import { getAssetUrl } from '@/utils/get-asset-url';
+import { getAssetUrl, openAsset } from '@/utils/get-asset-url';
 import { notify } from '@/utils/notify';
 import { unexpectedError } from '@/utils/unexpected-error';
 import CommentsSidebarDetail from '@/views/private/components/comments-sidebar-detail.vue';
@@ -268,6 +270,7 @@ const fieldsDenyList: string[] = [
 	'folder',
 	'charset',
 	'embed',
+	'namespace',
 ];
 
 const to = computed(() => {

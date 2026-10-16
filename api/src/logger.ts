@@ -124,5 +124,9 @@ function redactQuery(originalPath: string) {
 		url.searchParams.set('access_token', REDACT_TEXT);
 	}
 
+	if (url.searchParams.has('asset_grant')) {
+		url.searchParams.set('asset_grant', REDACT_TEXT);
+	}
+
 	return url.pathname + url.search;
 }

@@ -7,6 +7,10 @@ fields:
       - uuid
     width: half
 
+  - field: namespace
+    hidden: true
+    readonly: true
+
   - field: parent
     width: half
 

@@ -48,14 +48,21 @@
 							</template>
 
 							<v-list>
-								<v-list-item clickable :href="getAssetUrl(getFilename(element))">
+								<v-list-item
+									v-asset-grant-link="getAssetUrl(getFilename(element))"
+									clickable
+									:href="getAssetUrl(getFilename(element))"
+									@click.prevent="openAsset(getFilename(element))"
+								>
 									<v-list-item-icon><v-icon name="launch" /></v-list-item-icon>
 									<v-list-item-content>{{ t('open_file_in_tab') }}</v-list-item-content>
 								</v-list-item>
 								<v-list-item
+									v-asset-grant-link="getAssetUrl(getFilename(element), true)"
 									clickable
 									:download="element.directus_files_id.filename_download"
 									:href="getAssetUrl(getFilename(element), true)"
+									@click.prevent="openAsset(getFilename(element), true, element.directus_files_id.filename_download)"
 								>
 									<v-list-item-icon><v-icon name="download" /></v-list-item-icon>
 									<v-list-item-content>{{ t('download_file') }}</v-list-item-content>
@@ -91,11 +98,13 @@
 			<template #actions>
 				<v-button
 					v-if="currentlyEditing !== '+' && relationInfo.relatedCollection.collection === 'directus_files'"
+					v-asset-grant-link="downloadUrl"
 					secondary
 					rounded
 					icon
 					:download="downloadName"
 					:href="downloadUrl"
+					@click.prevent="openAsset(String(relatedPrimaryKey), true, downloadName)"
 				>
 					<v-icon name="download" />
 				</v-button>
@@ -131,7 +140,7 @@ import { useRelationM2M } from '@/composables/use-relation-m2m';
 import { DisplayItem, RelationQueryMultiple, useRelationMultiple } from '@/composables/use-relation-multiple';
 import { useRelationPermissionsM2M } from '@/composables/use-relation-permissions';
 import { adjustFieldsForDisplays } from '@/utils/adjust-fields-for-displays';
-import { getAssetUrl } from '@/utils/get-asset-url';
+import { getAssetUrl, openAsset } from '@/utils/get-asset-url';
 import DrawerCollection from '@/views/private/components/drawer-collection.vue';
 import DrawerItem from '@/views/private/components/drawer-item.vue';
 import { Filter } from '@wbce-d9/types';

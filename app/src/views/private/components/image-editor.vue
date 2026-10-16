@@ -22,7 +22,7 @@
 
 		<div v-if="imageData && !loading && !error" class="editor-container">
 			<div class="editor">
-				<img ref="imageElement" :src="imageURL" role="presentation" alt="" @load="onImageLoad" />
+				<img v-if="imageURL" ref="imageElement" :src="imageURL" role="presentation" alt="" @load="onImageLoad" />
 			</div>
 
 			<div class="toolbar">
@@ -130,6 +130,7 @@ import { useI18n } from 'vue-i18n';
 
 import { useSettingsStore } from '@/stores/settings';
 import { getRootPath } from '@/utils/get-root-path';
+import { getAssetGrantUrl } from '@/utils/get-asset-url';
 import { unexpectedError } from '@/utils/unexpected-error';
 import Cropper from 'cropperjs';
 import throttle from 'lodash/throttle';
@@ -203,9 +204,25 @@ export default defineComponent({
 
 		const randomId = ref<string>(nanoid());
 
-		const imageURL = computed(() => {
-			return `${getRootPath()}assets/${props.id}?${randomId.value}`;
-		});
+		const imageURL = ref('');
+
+		watch(
+			[internalActive, () => props.id, randomId],
+			async (_values, _oldValues, onCleanup) => {
+				let current = true;
+				onCleanup(() => (current = false));
+				imageURL.value = '';
+				if (!internalActive.value) return;
+
+				try {
+					const url = await getAssetGrantUrl(`${getRootPath()}assets/${props.id}?cache-buster=${randomId.value}`);
+					if (current) imageURL.value = url;
+				} catch (err: any) {
+					if (current) error.value = err;
+				}
+			},
+			{ immediate: true }
+		);
 
 		const dimensionsString = computed(() => {
 			let output = '';

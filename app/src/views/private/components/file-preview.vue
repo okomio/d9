@@ -1,14 +1,14 @@
 <template>
 	<div v-if="type && !imgError" class="file-preview" :class="{ modal: inModal, small: isSmall, svg: isSVG }">
 		<div v-if="type === 'image'" class="image" @click="$emit('click')">
-			<v-image :src="src" :width="width" :height="height" :alt="title" @error="imgError = true" />
+			<v-image :src="assetSrc" :width="width" :height="height" :alt="title" @error="imgError = true" />
 		</div>
 
 		<div v-else-if="type === 'video'" class="video">
-			<video controls :src="src" />
+			<video controls :src="assetSrc" />
 		</div>
 
-		<audio v-else-if="type === 'audio'" controls :src="src" />
+		<audio v-else-if="type === 'audio'" controls :src="assetSrc" />
 
 		<div v-else class="fallback">
 			<v-icon-file :ext="type" />
@@ -17,9 +17,10 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { readableMimeType } from '@/utils/readable-mime-type';
-import { getRootPath } from '@/utils/get-root-path';
+import { getPublicURL } from '@/utils/get-root-path';
+import { getAssetGrantUrl } from '@/utils/get-asset-url';
 
 interface Props {
 	mime: string;
@@ -59,7 +60,34 @@ const isSVG = computed(() => props.mime.includes('svg'));
 const maxHeight = computed(() => Math.min(props.height ?? 528, 528) + 'px');
 const isSmall = computed(() => props.height < 528);
 
-const src = computed(() => getRootPath() + props.src);
+const assetSrc = ref('');
+
+watch(
+	[() => props.src, () => props.mime],
+	async (_values, _oldValues, onCleanup) => {
+		let current = true;
+		onCleanup(() => (current = false));
+		imgError.value = false;
+		const url = new URL(props.src, getPublicURL()).href;
+
+		if (type.value === 'image') {
+			// VImage retrieves images with the active tab's Authorization header.
+			assetSrc.value = url;
+			return;
+		}
+
+		if (type.value !== 'video' && type.value !== 'audio') return;
+		assetSrc.value = '';
+
+		try {
+			const granted = await getAssetGrantUrl(url);
+			if (current) assetSrc.value = granted;
+		} catch {
+			if (current) imgError.value = true;
+		}
+	},
+	{ immediate: true }
+);
 </script>
 
 <style lang="scss" scoped>

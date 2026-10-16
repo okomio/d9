@@ -17,7 +17,7 @@ const api = axios.create({
 let queue = new PQueue({ concurrency: 5, intervalCap: 5, interval: 500, carryoverConcurrencyCount: true });
 
 /** Mirrors the backend's control-plane list (api/src/virtual-namespace/paths.ts). */
-const CONTROL_PLANE_PATHS = ['/auth', '/server', '/assets', '/users/me', '/namespaces'];
+const CONTROL_PLANE_PATHS = ['/auth', '/server', '/users/me', '/namespaces'];
 
 function isControlPlanePath(url?: string): boolean {
 	return !!url && CONTROL_PLANE_PATHS.some((prefix) => url === prefix || url.startsWith(`${prefix}/`));
