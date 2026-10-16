@@ -1,12 +1,10 @@
-import { getNamespaceRuntime } from './live';
 import type { ActiveNamespaceContext, PlatformCapabilities } from './types';
 
 /**
  * Project settings are one shared row, so only platform settings authority may see them.
  * Without the namespace feature there is no scope to hide them from.
  */
-export function canManageSharedSettings(): boolean {
-	const active = getNamespaceRuntime()?.state.active;
+export function canManageSharedSettings(active: ActiveNamespaceContext | null): boolean {
 	return !active || canManagePlatformResource(active.platform, 'settings');
 }
 

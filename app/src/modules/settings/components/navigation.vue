@@ -27,6 +27,7 @@
 
 <script lang="ts">
 import { canManageSharedSettings } from '@/namespaces/capabilities';
+import { getNamespaceRuntime } from '@/namespaces/live';
 import { useServerStore } from '@/stores/server';
 import { computed, defineComponent } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -74,7 +75,10 @@ export default defineComponent({
 					name: t('settings_flows'),
 					to: `/settings/flows`,
 				},
-			].filter((item) => item.to !== '/settings/project' || canManageSharedSettings())
+			].filter(
+				(item) =>
+					item.to !== '/settings/project' || canManageSharedSettings(getNamespaceRuntime()?.state.active ?? null)
+			)
 		);
 
 		const externalItems = computed(() => {

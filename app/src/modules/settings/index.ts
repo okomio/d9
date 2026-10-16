@@ -43,7 +43,7 @@ export default defineModule({
 			path: 'project',
 			component: Project,
 			beforeEnter() {
-				if (!canManageSharedSettings()) return '/settings/data-model';
+				if (!canManageSharedSettings(getNamespaceRuntime()?.state.active ?? null)) return '/settings/data-model';
 			},
 		},
 		{

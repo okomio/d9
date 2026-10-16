@@ -70,6 +70,7 @@ import { useShortcut } from '@/composables/use-shortcut';
 import { useEditsGuard } from '@/composables/use-edits-guard';
 import { useRouter } from 'vue-router';
 import { canManageSharedSettings } from '@/namespaces/capabilities';
+import { getNamespaceRuntime } from '@/namespaces/live';
 
 export default defineComponent({
 	components: { SettingsNavigation, ProjectInfoSidebarDetail },
@@ -81,7 +82,7 @@ export default defineComponent({
 		const settingsStore = useSettingsStore();
 		const serverStore = useServerStore();
 
-		const canEditSharedSettings = computed(canManageSharedSettings);
+		const canEditSharedSettings = computed(() => canManageSharedSettings(getNamespaceRuntime()?.state.active ?? null));
 
 		const { fields } = useCollection('directus_settings');
 
