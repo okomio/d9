@@ -1,12 +1,11 @@
 <template>
 	<v-list nav>
-		<v-list-item
-			to="/global-admin/users"
-			exact
-			:active="route.path.startsWith('/global-admin/users') && !namespaceFilter"
-		>
+		<v-list-item clickable :disabled="switching" @click="openGlobalDirectory">
 			<v-list-item-icon><v-icon name="people_alt" /></v-list-item-icon>
 			<v-list-item-content>All Users</v-list-item-content>
+		</v-list-item>
+		<v-list-item v-if="switchError">
+			<v-list-item-content>Could not open the project scope</v-list-item-content>
 		</v-list-item>
 		<v-list-item to="/global-admin/namespaces" :active="route.path.startsWith('/global-admin/namespaces')">
 			<v-list-item-icon><v-icon name="account_tree" /></v-list-item-icon>
@@ -56,10 +55,16 @@
 import api from '@/api';
 import { ensureNamespaceRuntime } from '@/namespaces/live';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 const runtime = ensureNamespaceRuntime();
 const route = useRoute();
+const router = useRouter();
+const switching = ref(false);
+const switchError = ref(false);
+const projectNamespaceId = computed(
+	() => runtime.state.choices.find((choice) => choice.namespace.kind === 'main')?.namespace.id ?? null
+);
 const choices = computed(() => runtime.state.choices.filter((choice) => choice.namespace.kind === 'virtual'));
 const namespaceFilter = computed(() => (typeof route.query.admin_ns === 'string' ? route.query.admin_ns : null));
 const roleFilter = computed(() => (typeof route.query.admin_role === 'string' ? route.query.admin_role : null));
@@ -78,6 +83,42 @@ watch(
 );
 
 onBeforeUnmount(() => controller?.abort());
+
+/**
+ * The shared directory is readable in the project scope only, so All Users opens the native
+ * Users module there instead of listing members of one namespace.
+ */
+async function openGlobalDirectory() {
+	if (switching.value) return;
+
+	if (runtime.state.active?.namespace.kind === 'main') {
+		void router.push('/users');
+		return;
+	}
+
+	if (!projectNamespaceId.value) {
+		switchError.value = true;
+		return;
+	}
+
+	switching.value = true;
+	switchError.value = false;
+
+	try {
+		const result = await runtime.coordinator.requestSwitch({
+			namespaceId: projectNamespaceId.value,
+			source: 'platform',
+			destination: '/users',
+		});
+
+		if (result.status === 'ready') return; // The browser reloads at the project URL.
+		if (result.status !== 'stayed') switchError.value = true;
+	} catch {
+		switchError.value = true;
+	} finally {
+		switching.value = false;
+	}
+}
 
 async function toggle(id: string, keepOpen = false) {
 	if (expanded.value === id && !keepOpen) {
