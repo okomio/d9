@@ -43,7 +43,10 @@ export function createNamespaceUserLookupSource(
 				totalCount.value = 0;
 				error.value = null;
 				loading.value = false;
-				query.page.value = 1;
+
+				// The caller's query is not ours to reset. Writing `page` here travels out through the
+				// preset store and comes back as a change to a watched source, which re-fires this
+				// watcher forever.
 
 				if (active.value && hasMeaningfulSearch(String(unref(query.search) ?? ''))) {
 					timer = setTimeout(() => void getItems(), 250);

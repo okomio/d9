@@ -1,4 +1,5 @@
 import api from '@/api';
+import { canManageSharedSettings } from '@/namespaces/capabilities';
 import { getNamespaceRuntime } from '@/namespaces/live';
 import { defineModule } from '@wbce-d9/utils';
 import { useCollectionsStore } from '@/stores/collections';
@@ -41,6 +42,9 @@ export default defineModule({
 			name: 'settings-project',
 			path: 'project',
 			component: Project,
+			beforeEnter() {
+				if (!canManageSharedSettings(getNamespaceRuntime()?.state.active ?? null)) return '/settings/data-model';
+			},
 		},
 		{
 			path: 'data-model',

@@ -1,8 +1,8 @@
 # Virtual namespace Settings integration status
 
-This slice integrates with `hackathon`, including the backend compatibility work merged through PR #8 (`72910d31a`). It
-preserves the native Settings module and uses the foundation's active namespace token, effective access, full reload on
-switch, and store reset. It does not introduce another switch mechanism.
+This slice integrates with `hackathon`, including PR #8 and the Settings integration (`0a8a5c903`). It preserves the
+native Settings module and uses the foundation's active namespace token, effective access, full reload on switch, and
+store reset. It does not introduce another switch mechanism.
 
 ## Supported in the current frontend/backend pair
 
@@ -12,7 +12,7 @@ switch, and store reset. It does not introduce another switch mechanism.
 | Roles & Permissions | The native editor uses the selected namespace's `/roles` and `/permissions`. Child role counts come from `/namespaces/:id/members` `role_counts`, not `directus_roles.users` (the shared main-role relation). The child editor shows its namespace as read only, lists local role members and offers Add Existing through the membership API, without creating or inviting a shared user. Role deletion removes local memberships and refuses cross-namespace roles, shared main-role assignments and removal of the last local admin role or member. The public role editor remains unavailable. New-role and recommended-reset defaults omit shared user/file/folder/settings/share grants; those permission rows and direct editor URLs are unavailable in a child pending backend policy. |
 | Presets & Bookmarks | The native screens remain mounted and use the active token. Admin checks use effective namespace admin access, including inherited Global Admin.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | Flows & Webhooks    | The native screens remain mounted; requests use the active namespace token. Their tables are in the namespace schema. The foundation clears the flow store when switching, and its request ledger keeps submitted writes in their original context.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| Project Settings    | The native route remains visible. Local child admins see a contract notice instead of the shared form; only effective platform settings authority can view and submit that form.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Project Settings    | Project Settings is hidden from local namespace admins, and direct routes redirect to Data Model. Only effective platform settings authority can view and submit the native shared form.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Translation Strings | The native list remains visible. Local child admins cannot open its editor or submit updates, which currently write `directus_settings.translation_strings`. Global Admin keeps the existing editor.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 ## Backend contracts still required
@@ -33,8 +33,7 @@ switch, and store reset. It does not introduce another switch mechanism.
   other control-plane resources whose child access policy is unresolved. The backend now enforces role/permission
   ownership and membership-scoped user reads across REST and GraphQL. Keep those service checks; the former blanket REST
   user-read block is removed. Shared user writes remain restricted, and the UI cannot define unresolved resource
-  policies. Inherited Global Admin without a child role also depends on the backend returning effective `can_use_app`
-  correctly.
+  policies. Inherited Global Admin without a child role uses the backend's effective `can_use_app` response.
 - **D08 public permissions:** no namespace-safe public/share resolution contract is established. The public role editor
   is unavailable in a child until this is defined.
 - **D07/D09 shared defaults:** the ordinary new-role preset grants broad shared Files, Folders, Users and Shares rights.
@@ -52,11 +51,12 @@ permissions and D11 end-to-end verification remain backend-dependent.
 The conflict resolution keeps the native frontend screens and picker, the backend Global Admin authority checks, request
 cache isolation, and membership-scoped user visibility. The Settings lookup retains its namespace argument and bounded
 search contract. HTTP regressions cover lookup identity fields and membership roles, denial for non-admins, role
-deletion without shared-account changes, foreign-role denial, and last local admin protection. Existing cache/revocation
-fixtures supply a valid lookup search while retaining their authorization assertions.
+deletion without shared-account changes, foreign-role denial, and last local admin protection. The cache/revocation
+fixtures retain the valid lookup searches and authorization assertions from the merged integration. A picker regression
+also verifies that opening the drawer or changing search does not reset the caller's preset page.
 
-Validated with Node 22.23.3: API/types/schema builds and the admin production build pass; the full API suite reports 751
-passed, 2 expected failures and 1 skipped; the Settings picker suite reports 3 passed; the real HTTP/PostgreSQL
-compatibility suite reports 146 passed with no skips or failures. ESLint, Prettier and whitespace checks pass for this
-PR. The compatibility harness creates and drops its own database; it does not target the restored Infrastructure data.
-Manual browser validation of the Settings screens remains separate from these automated checks.
+Validated with Node 22.23.3: API/types/schema builds and the admin production build pass; the full API suite reports 752
+passed, 2 expected failures and 1 skipped; the Settings picker and authority suites report 7 passed; the real
+HTTP/PostgreSQL compatibility suite reports 146 passed with no skips or failures. ESLint, Prettier and whitespace checks
+pass for this PR. The compatibility harness creates and drops its own database; it does not target the restored
+Infrastructure data. Manual browser validation of the Settings screens remains separate from these automated checks.

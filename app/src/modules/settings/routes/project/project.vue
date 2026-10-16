@@ -69,8 +69,8 @@ import { clone } from 'lodash';
 import { useShortcut } from '@/composables/use-shortcut';
 import { useEditsGuard } from '@/composables/use-edits-guard';
 import { useRouter } from 'vue-router';
+import { canManageSharedSettings } from '@/namespaces/capabilities';
 import { getNamespaceRuntime } from '@/namespaces/live';
-import { canManagePlatformResource } from '@/namespaces/capabilities';
 
 export default defineComponent({
 	components: { SettingsNavigation, ProjectInfoSidebarDetail },
@@ -82,10 +82,7 @@ export default defineComponent({
 		const settingsStore = useSettingsStore();
 		const serverStore = useServerStore();
 
-		const canEditSharedSettings = computed(() => {
-			const active = getNamespaceRuntime()?.state.active;
-			return !active || canManagePlatformResource(active.platform, 'settings');
-		});
+		const canEditSharedSettings = computed(() => canManageSharedSettings(getNamespaceRuntime()?.state.active ?? null));
 
 		const { fields } = useCollection('directus_settings');
 

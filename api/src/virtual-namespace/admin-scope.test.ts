@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest';
+import type { Request, Response } from 'express';
 import { isAlwaysBlockedWrite, namespaceOwnedWrite, targetIdFromPath } from './admin-scope.js';
+import { namespaceAdminScope } from './middleware.js';
 
 describe('isAlwaysBlockedWrite', () => {
 	test('blocks instance-wide surfaces', () => {
@@ -28,6 +30,25 @@ describe('isAlwaysBlockedWrite', () => {
 	test('does not match lookalike paths', () => {
 		expect(isAlwaysBlockedWrite('POST', '/usersomething')).toBe(false);
 		expect(isAlwaysBlockedWrite('POST', '/settings-backup')).toBe(false);
+	});
+});
+
+describe('namespaceAdminScope user reads', () => {
+	async function check(path: string, scopedAdmin: boolean): Promise<unknown> {
+		return new Promise((resolve) => {
+			namespaceAdminScope()(
+				{ method: 'GET', path, namespaceScopedAdmin: scopedAdmin } as Request,
+				{} as Response,
+				(error) => resolve(error)
+			);
+		});
+	}
+
+	test('leaves user reads to the service membership scope', async () => {
+		expect(await check('/users', true)).toBeUndefined();
+		expect(await check('/users/other-user', true)).toBeUndefined();
+		expect(await check('/users/me', true)).toBeUndefined();
+		expect(await check('/users', false)).toBeUndefined();
 	});
 });
 

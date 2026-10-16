@@ -26,6 +26,8 @@
 </template>
 
 <script lang="ts">
+import { canManageSharedSettings } from '@/namespaces/capabilities';
+import { getNamespaceRuntime } from '@/namespaces/live';
 import { useServerStore } from '@/stores/server';
 import { computed, defineComponent } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -36,43 +38,48 @@ export default defineComponent({
 		const { info } = useServerStore();
 		const version = info?.directus?.mainVersion;
 
-		const navItems = [
-			{
-				icon: 'public',
-				name: t('settings_project'),
-				to: `/settings/project`,
-			},
-			{
-				icon: 'list_alt',
-				name: t('settings_data_model'),
-				to: `/settings/data-model`,
-			},
-			{
-				icon: 'admin_panel_settings',
-				name: t('settings_permissions'),
-				to: `/settings/roles`,
-			},
-			{
-				icon: 'bookmark',
-				name: t('settings_presets'),
-				to: `/settings/presets`,
-			},
-			{
-				icon: 'translate',
-				name: t('settings_translation_strings'),
-				to: `/settings/translation-strings`,
-			},
-			{
-				icon: 'anchor',
-				name: t('settings_webhooks'),
-				to: `/settings/webhooks`,
-			},
-			{
-				icon: 'bolt',
-				name: t('settings_flows'),
-				to: `/settings/flows`,
-			},
-		];
+		const navItems = computed(() =>
+			[
+				{
+					icon: 'public',
+					name: t('settings_project'),
+					to: `/settings/project`,
+				},
+				{
+					icon: 'list_alt',
+					name: t('settings_data_model'),
+					to: `/settings/data-model`,
+				},
+				{
+					icon: 'admin_panel_settings',
+					name: t('settings_permissions'),
+					to: `/settings/roles`,
+				},
+				{
+					icon: 'bookmark',
+					name: t('settings_presets'),
+					to: `/settings/presets`,
+				},
+				{
+					icon: 'translate',
+					name: t('settings_translation_strings'),
+					to: `/settings/translation-strings`,
+				},
+				{
+					icon: 'anchor',
+					name: t('settings_webhooks'),
+					to: `/settings/webhooks`,
+				},
+				{
+					icon: 'bolt',
+					name: t('settings_flows'),
+					to: `/settings/flows`,
+				},
+			].filter(
+				(item) =>
+					item.to !== '/settings/project' || canManageSharedSettings(getNamespaceRuntime()?.state.active ?? null)
+			)
+		);
 
 		const externalItems = computed(() => {
 			return [
