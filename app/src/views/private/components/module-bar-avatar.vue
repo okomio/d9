@@ -1,6 +1,5 @@
 <template>
 	<div class="module-bar-avatar">
-		<namespace-switcher v-if="namespaceFrontendEnabled" />
 		<v-badge :value="unread" :disabled="unread == 0" class="notifications-badge">
 			<v-button
 				v-tooltip.right="t('notifications')"
@@ -34,6 +33,8 @@
 					</v-card-actions>
 				</v-card>
 			</v-dialog>
+
+			<namespace-switcher v-if="namespaceFrontendEnabled" :reveal="hover" class="hover-switcher" />
 
 			<router-link :to="userProfileLink">
 				<v-avatar v-tooltip.right="userFullName" tile large :class="{ 'no-avatar': !avatarURL }">
@@ -167,6 +168,18 @@ export default defineComponent({
 		--v-button-color-hover: var(--white);
 		--v-button-background-color: var(--module-background);
 		--v-button-background-color-hover: var(--module-background);
+	}
+
+	.hover-switcher {
+		position: absolute;
+		top: -60px;
+		left: 0;
+		z-index: 2;
+		pointer-events: none;
+	}
+
+	.hover-switcher :deep(.switch-trigger) {
+		pointer-events: auto;
 	}
 
 	.sign-out {

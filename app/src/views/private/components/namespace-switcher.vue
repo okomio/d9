@@ -2,18 +2,21 @@
 	<div class="namespace-switcher">
 		<v-dialog v-model="dialogOpen" @esc="close">
 			<template #activator="{ on }">
-				<v-button
-					v-tooltip.right="'Switch area'"
-					tile
-					icon
-					x-large
-					class="switch-trigger"
-					:disabled="!canOpen"
-					@click="open(on)"
-				>
-					<v-icon name="swap_horiz" />
-					<span class="visually-hidden">Switch area</span>
-				</v-button>
+				<transition name="reveal">
+					<v-button
+						v-if="reveal"
+						v-tooltip.right="'Switch area'"
+						tile
+						icon
+						x-large
+						class="switch-trigger"
+						:disabled="!canOpen"
+						@click="open(on)"
+					>
+						<v-icon name="swap_horiz" />
+						<span class="visually-hidden">Switch area</span>
+					</v-button>
+				</transition>
 			</template>
 			<v-card class="chooser-dialog-card">
 				<area-chooser
@@ -42,6 +45,8 @@ import { ensureNamespaceRuntime } from '@/namespaces/live';
 import { isEnterableChild } from '@/namespaces/choices';
 import AreaChooser from '@/namespaces/chooser-content.vue';
 import { computed, ref } from 'vue';
+
+withDefaults(defineProps<{ reveal?: boolean }>(), { reveal: true });
 
 const runtime = ensureNamespaceRuntime();
 const dialogOpen = ref(false);
@@ -108,6 +113,20 @@ async function selectArea(id: string) {
 .namespace-switcher {
 	width: 60px;
 	height: 60px;
+}
+
+.reveal-enter-active,
+.reveal-leave-active {
+	transition: transform var(--fast) var(--transition);
+}
+
+.reveal-enter-from,
+.reveal-leave-to {
+	transform: translateY(-100%);
+
+	@media (min-width: 960px) {
+		transform: translateY(100%);
+	}
 }
 
 .switch-trigger {
