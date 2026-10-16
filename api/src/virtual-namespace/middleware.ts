@@ -6,10 +6,11 @@ import { getDefaultNamespace, isNamespaceHeaderEnabled, NAMESPACE_HEADER } from 
 import { runWithNamespace } from './context.js';
 import { resolveNamespaceMembership } from './membership.js';
 import { isControlPlanePath } from './paths.js';
+import { isSharedGraphQLOperation } from './graphql.js';
 import { getNamespace } from './registry.js';
 import { pickNamespace } from './resolve.js';
 import { getActiveNamespaceId } from './context.js';
-import { isAlwaysBlockedWrite, isBlockedUserRead, namespaceOwnedWrite, targetIdFromPath } from './admin-scope.js';
+import { isAlwaysBlockedWrite, namespaceOwnedWrite, targetIdFromPath } from './admin-scope.js';
 
 /**
  * The namespace the request asks for, keeping the claim and the header separate
@@ -39,10 +40,14 @@ function readRequestedNamespace(req: Request): { claimed?: string | undefined; h
  * without one.
  */
 export function virtualNamespace(): RequestHandler {
-	return asyncHandler(async (req, _res, next) => {
+	return asyncHandler(async (req, res, next) => {
 		const accountability = req.accountability;
 
-		if (!accountability?.user || isControlPlanePath(req.path)) {
+		if (
+			!accountability?.user ||
+			isControlPlanePath(req.path) ||
+			isSharedGraphQLOperation(req.path, res.locals['graphqlParams'])
+		) {
 			next();
 			return;
 		}
@@ -56,8 +61,7 @@ export function virtualNamespace(): RequestHandler {
 		const requested = pickNamespace({ claimed, header, fallback: getDefaultNamespace() });
 
 		if (!requested) {
-			next();
-			return;
+			throw new ForbiddenException();
 		}
 
 		// Resolved against the shared schema: this runs before the namespace
@@ -69,7 +73,7 @@ export function virtualNamespace(): RequestHandler {
 			throw new ForbiddenException();
 		}
 
-		if (accountability.admin !== true) {
+		if (accountability.globalAdmin !== true) {
 			const membership = await resolveNamespaceMembership(database, accountability.user, namespace.id);
 
 			if (!membership) {
@@ -109,7 +113,7 @@ export function namespaceAdminScope(): RequestHandler {
 			return;
 		}
 
-		if (isAlwaysBlockedWrite(req.method, req.path) || isBlockedUserRead(req.method, req.path)) {
+		if (isAlwaysBlockedWrite(req.method, req.path)) {
 			throw new ForbiddenException();
 		}
 

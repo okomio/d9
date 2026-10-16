@@ -7,13 +7,9 @@
  * control plane, because that is instance-wide: users, settings and files are one
  * set of rows shared by every namespace.
  *
- * This guard exists because `admin_access` is a single boolean meaning "skip ACL
- * checks" everywhere. Before it, a local admin could read the whole user
- * directory and PATCH a role belonging to another namespace. The durable fix is
- * the effective-capability split D04 describes; this is the edge restriction that
- * closes the escalation meanwhile.
- *
- * Shared user records are read through namespace-specific membership endpoints.
+ * The service layer independently enforces shared-write and namespace ownership
+ * rules so alternate transports and nested writes have the same boundary.
+ * Reads, including SEARCH, proceed to the service's membership visibility rules.
  */
 
 /** Writes that are never available to a namespace-scoped admin. */
@@ -31,7 +27,7 @@ const NAMESPACE_OWNED = [
 function isRead(method: string): boolean {
 	const upper = method.toUpperCase();
 
-	return upper === 'GET' || upper === 'HEAD';
+	return upper === 'GET' || upper === 'HEAD' || upper === 'SEARCH';
 }
 
 function isSameOrChildPath(path: string, prefix: string): boolean {
@@ -47,14 +43,6 @@ export function isAlwaysBlockedWrite(method: string, path: string): boolean {
 	if (isRead(method)) return false;
 
 	return ALWAYS_BLOCKED.some((prefix) => isSameOrChildPath(path, prefix));
-}
-
-/** Shared user listings and profiles cannot be read using local admin authority. */
-export function isBlockedUserRead(method: string, path: string): boolean {
-	const upper = method.toUpperCase();
-	if (!['GET', 'HEAD', 'SEARCH'].includes(upper)) return false;
-	if (path === '/users/me') return false;
-	return isSameOrChildPath(path, '/users');
 }
 
 /**

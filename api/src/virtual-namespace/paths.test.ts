@@ -13,6 +13,14 @@ describe('isControlPlanePath', () => {
 		expect(isControlPlanePath('/server/info')).toBe(true);
 	});
 
+	test('matches literal routes without regard to case, like Express', () => {
+		expect(isControlPlanePath('/AUTH/login')).toBe(true);
+		expect(isControlPlanePath('/Users/ME')).toBe(true);
+		expect(isControlPlanePath('/NaMeSpAcEs/SomeCaseSensitiveId/token')).toBe(true);
+		expect(isControlPlanePath('/SERVER/specs/graphql/SYSTEM')).toBe(true);
+		expect(isControlPlanePath('/Users/ME-too')).toBe(false);
+	});
+
 	test('does not match namespace-scoped paths or lookalikes', () => {
 		expect(isControlPlanePath('/items/countries')).toBe(false);
 		expect(isControlPlanePath('/graphql')).toBe(false);

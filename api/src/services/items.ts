@@ -7,6 +7,8 @@ import { getCache } from '../cache.js';
 import { getHelpers } from '../database/helpers/index.js';
 import getDatabase from '../database/index.js';
 import { limitToNamespace, stampNamespace } from '../virtual-namespace/scope.js';
+import { assertNamespaceOwnedWrite, assertSharedWrite } from '../virtual-namespace/authority.js';
+import type { SharedUserScope } from '../virtual-namespace/user-read-scope.js';
 import runAST from '../database/run-ast.js';
 import emitter from '../emitter.js';
 import env from '../env.js';
@@ -29,6 +31,7 @@ export type QueryOptions = {
 	stripNonRequested?: boolean;
 	permissionsAction?: PermissionsAction;
 	emitEvents?: boolean;
+	sharedUserScope?: SharedUserScope;
 };
 
 export type MutationTracker = {
@@ -93,6 +96,8 @@ export class ItemsService<Item extends AnyItem = AnyItem> implements AbstractSer
 	 * Create a single new item.
 	 */
 	async createOne(data: Partial<Item>, opts: MutationOptions = {}): Promise<PrimaryKey> {
+		assertSharedWrite(this.collection, this.accountability);
+		await assertNamespaceOwnedWrite(this.knex, this.collection, this.accountability, data);
 		// Stamp the owning namespace, so a role, permission, activity or revision
 		// record created in an area belongs to that area rather than to none.
 		data = stampNamespace(this.collection, data);
@@ -408,6 +413,8 @@ export class ItemsService<Item extends AnyItem = AnyItem> implements AbstractSer
 
 		const records = await runAST(ast, this.schema, {
 			knex: this.knex,
+			accountability: this.accountability,
+			sharedUserScope: opts?.sharedUserScope,
 			// GraphQL requires relational keys to be returned regardless
 			stripNonRequested: opts?.stripNonRequested !== undefined ? opts.stripNonRequested : true,
 		});
@@ -555,6 +562,8 @@ export class ItemsService<Item extends AnyItem = AnyItem> implements AbstractSer
 	 * Update many items by primary key, setting all items to the same change
 	 */
 	async updateMany(keys: PrimaryKey[], data: Partial<Item>, opts: MutationOptions = {}): Promise<PrimaryKey[]> {
+		assertSharedWrite(this.collection, this.accountability);
+		await assertNamespaceOwnedWrite(this.knex, this.collection, this.accountability, data, keys);
 		if (!opts.mutationTracker) opts.mutationTracker = this.createMutationTracker();
 
 		if (!opts.bypassLimits) {
@@ -857,6 +866,8 @@ export class ItemsService<Item extends AnyItem = AnyItem> implements AbstractSer
 	 * Delete multiple items by primary key
 	 */
 	async deleteMany(keys: PrimaryKey[], opts: MutationOptions = {}): Promise<PrimaryKey[]> {
+		assertSharedWrite(this.collection, this.accountability);
+		await assertNamespaceOwnedWrite(this.knex, this.collection, this.accountability, undefined, keys);
 		if (!opts.mutationTracker) opts.mutationTracker = this.createMutationTracker();
 
 		if (!opts.bypassLimits) {

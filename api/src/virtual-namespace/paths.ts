@@ -23,5 +23,7 @@ function isSameOrChildPath(path: string, prefix: string): boolean {
  * `path` must be the request path without a query string (Express `req.path`).
  */
 export function isControlPlanePath(path: string): boolean {
-	return CONTROL_PLANE_PATHS.some((prefix) => isSameOrChildPath(path, prefix));
+	const normalized = path.toLowerCase();
+
+	return CONTROL_PLANE_PATHS.some((prefix) => isSameOrChildPath(normalized, prefix));
 }

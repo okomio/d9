@@ -13,7 +13,7 @@ import { RolesService } from '../../../services/roles.js';
 import { SettingsService } from '../../../services/settings.js';
 import { UsersService } from '../../../services/users.js';
 import { getSchema } from '../../../utils/get-schema.js';
-import { defaultAdminRole, defaultAdminUser } from '../../utils/defaults.js';
+import { getDefaultAdminRole, defaultAdminUser } from '../../utils/defaults.js';
 
 export default async function bootstrap({ skipAdminInit }: { skipAdminInit?: boolean }): Promise<void> {
 	logger.info('Initializing bootstrap...');
@@ -33,7 +33,7 @@ export default async function bootstrap({ skipAdminInit }: { skipAdminInit?: boo
 		const schema = await getSchema();
 
 		if (skipAdminInit == null) {
-			await createDefaultAdmin(schema);
+			await createDefaultAdmin(schema, database);
 		} else {
 			logger.info('Skipping creation of default Admin user and role...');
 		}
@@ -70,12 +70,12 @@ async function waitForDatabase(database: Knex) {
 	return database;
 }
 
-async function createDefaultAdmin(schema: SchemaOverview) {
+async function createDefaultAdmin(schema: SchemaOverview, database: Knex) {
 	const { nanoid } = await import('nanoid');
 
 	logger.info('Setting up first admin role...');
 	const rolesService = new RolesService({ schema });
-	const role = await rolesService.createOne(defaultAdminRole);
+	const role = await rolesService.createOne(await getDefaultAdminRole(database));
 
 	logger.info('Adding first admin user...');
 	const usersService = new UsersService({ schema });

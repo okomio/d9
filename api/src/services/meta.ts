@@ -4,6 +4,7 @@ import getDatabase from '../database/index.js';
 import { ForbiddenException } from '../exceptions/index.js';
 import type { AbstractServiceOptions } from '../types/index.js';
 import { applyFilter, applySearch } from '../utils/apply-query.js';
+import { applySharedUserReadScope } from '../virtual-namespace/user-read-scope.js';
 
 export class MetaService {
 	knex: Knex;
@@ -37,7 +38,11 @@ export class MetaService {
 	}
 
 	async totalCount(collection: string): Promise<number> {
-		const dbQuery = this.knex(collection).count('*', { as: 'count' }).first();
+		const dbQuery = applySharedUserReadScope(
+			this.knex,
+			this.knex(collection).count('*', { as: 'count' }).first(),
+			this.accountability
+		);
 
 		if (this.accountability?.admin !== true) {
 			const permissionsRecord = this.accountability?.permissions?.find((permission) => {
@@ -57,7 +62,11 @@ export class MetaService {
 	}
 
 	async filterCount(collection: string, query: Query): Promise<number> {
-		const dbQuery = this.knex(collection).count('*', { as: 'count' });
+		const dbQuery = applySharedUserReadScope(
+			this.knex,
+			this.knex(collection).count('*', { as: 'count' }),
+			this.accountability
+		);
 
 		let filter = query.filter || {};
 
