@@ -66,7 +66,7 @@
 			<settings-navigation />
 		</template>
 
-		<users-invite v-model="userInviteModalActive" :role="primaryKey" />
+		<users-invite v-if="!isVirtualNamespace" v-model="userInviteModalActive" :role="primaryKey" />
 
 		<div class="roles">
 			<v-notice v-if="adminEnabled" type="info">
@@ -77,7 +77,18 @@
 
 			<v-form
 				v-model="edits"
-				collection="directus_roles"
+				:fields="roleFieldsBeforeUsers"
+				:primary-key="primaryKey"
+				:loading="loading"
+				:initial-values="item"
+				:batch-mode="isBatch"
+			/>
+			<namespace-role-members v-if="namespaceId" :namespace-id="namespaceId" :role-id="primaryKey" />
+			<v-form
+				v-if="isVirtualNamespace && namespaceField"
+				v-model="edits"
+				class="namespace-field"
+				:fields="[namespaceField]"
 				:primary-key="primaryKey"
 				:loading="loading"
 				:initial-values="item"
@@ -118,13 +129,23 @@ import { useUserStore } from '@/stores/user';
 import RevisionsDrawerDetail from '@/views/private/components/revisions-drawer-detail.vue';
 import UsersInvite from '@/views/private/components/users-invite.vue';
 import { useRouter } from 'vue-router';
+import { useCollection } from '@wbce-d9/composables';
+import { getNamespaceRuntime } from '@/namespaces/live';
 import SettingsNavigation from '../../../components/navigation.vue';
 import PermissionsOverview from './components/permissions-overview.vue';
 import RoleInfoSidebarDetail from './components/role-info-sidebar-detail.vue';
+import NamespaceRoleMembers from './components/namespace-role-members.vue';
 
 export default defineComponent({
 	name: 'RolesItem',
-	components: { SettingsNavigation, RevisionsDrawerDetail, RoleInfoSidebarDetail, PermissionsOverview, UsersInvite },
+	components: {
+		SettingsNavigation,
+		RevisionsDrawerDetail,
+		RoleInfoSidebarDetail,
+		PermissionsOverview,
+		UsersInvite,
+		NamespaceRoleMembers,
+	},
 	props: {
 		primaryKey: {
 			type: String,
@@ -149,13 +170,27 @@ export default defineComponent({
 		const serverStore = useServerStore();
 		const userInviteModalActive = ref(false);
 		const { primaryKey } = toRefs(props);
+		const isVirtualNamespace = getNamespaceRuntime()?.state.active?.namespace.kind === 'virtual';
+		const namespaceId = isVirtualNamespace ? getNamespaceRuntime()?.state.active?.namespaceId : null;
+		const { fields } = useCollection('directus_roles');
+
+		const roleFieldsBeforeUsers = computed(() =>
+			isVirtualNamespace
+				? fields.value.filter((field) => field.field !== 'users' && field.field !== 'namespace')
+				: fields.value
+		);
+
+		const namespaceField = computed(() => {
+			const field = fields.value.find((field) => field.field === 'namespace');
+			return field ? { ...field, meta: { ...field.meta!, readonly: true } } : null;
+		});
 
 		const revisionsDrawerDetailRef = ref<InstanceType<typeof RevisionsDrawerDetail> | null>(null);
 
 		const { edits, hasEdits, item, saving, loading, error, save, remove, deleting, isBatch } = useItem(
 			ref('directus_roles'),
 			primaryKey,
-			{ deep: { users: { _limit: 0 } } }
+			isVirtualNamespace ? undefined : { deep: { users: { _limit: 0 } } }
 		);
 
 		const confirmDelete = ref(false);
@@ -185,6 +220,7 @@ export default defineComponent({
 		const { confirmLeave, leaveTo } = useEditsGuard(hasEdits);
 
 		const canInviteUsers = computed(() => {
+			if (isVirtualNamespace) return false;
 			if (serverStore.auth.disableDefault === true) return false;
 
 			const isAdmin = !!userStore.currentUser?.role?.admin_access;
@@ -221,6 +257,10 @@ export default defineComponent({
 			leaveTo,
 			discardAndLeave,
 			canInviteUsers,
+			isVirtualNamespace,
+			namespaceId,
+			roleFieldsBeforeUsers,
+			namespaceField,
 			revisionsDrawerDetailRef,
 		};
 
@@ -233,13 +273,13 @@ export default defineComponent({
 
 		async function saveAndStay() {
 			await save();
-			await userStore.hydrate();
+			if (!isVirtualNamespace) await userStore.hydrate();
 			revisionsDrawerDetailRef.value?.refresh?.();
 		}
 
 		async function saveAndQuit() {
 			await save();
-			await userStore.hydrate();
+			if (!isVirtualNamespace) await userStore.hydrate();
 			router.push(`/settings/roles`);
 		}
 
@@ -285,5 +325,9 @@ export default defineComponent({
 .permissions-overview,
 .roles .v-notice {
 	margin-bottom: 48px;
+}
+
+.namespace-field {
+	margin-top: var(--form-vertical-gap);
 }
 </style>

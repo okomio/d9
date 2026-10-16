@@ -9,7 +9,13 @@
 		</template>
 
 		<template #actions>
-			<v-button v-tooltip.bottom="t('create_translation_string')" rounded icon @click="openTranslationStringDialog">
+			<v-button
+				v-if="canEditSharedSettings"
+				v-tooltip.bottom="t('create_translation_string')"
+				rounded
+				icon
+				@click="openTranslationStringDialog"
+			>
 				<v-icon name="add" />
 			</v-button>
 		</template>
@@ -25,11 +31,16 @@
 		</template>
 
 		<div class="translation-strings">
+			<v-notice v-if="!canEditSharedSettings" type="info">
+				Translation strings are shared across namespaces. Editing requires Global Admin access.
+			</v-notice>
 			<v-info v-if="!loading && tableItems.length === 0" icon="translate" :title="t('no_translation_string')" center>
 				{{ t('no_translation_string_copy') }}
 
 				<template #append>
-					<v-button @click="openTranslationStringDialog">{{ t('create_translation_string') }}</v-button>
+					<v-button v-if="canEditSharedSettings" @click="openTranslationStringDialog">
+						{{ t('create_translation_string') }}
+					</v-button>
 				</template>
 			</v-info>
 			<v-table
@@ -68,8 +79,15 @@ import SettingsNavigation from '../../components/navigation.vue';
 import { TranslationString, useTranslationStrings } from '@/composables/use-translation-strings';
 import TranslationStringsDrawer from './translation-strings-drawer.vue';
 import TranslationStringsTooltip from './translation-strings-tooltip.vue';
+import { getNamespaceRuntime } from '@/namespaces/live';
+import { canManagePlatformResource } from '@/namespaces/capabilities';
 
 const { t } = useI18n();
+
+const canEditSharedSettings = computed(() => {
+	const active = getNamespaceRuntime()?.state.active;
+	return !active || canManagePlatformResource(active.platform, 'settings');
+});
 
 const tableHeaders: TableHeader[] = [
 	{
@@ -97,6 +115,7 @@ const { loading, translationStrings } = useTranslationStrings();
 const tableItems = computed(() => (translationStrings.value ? translationStrings.value : []));
 
 function openTranslationStringDialog({ item }: { item?: TranslationString }) {
+	if (!canEditSharedSettings.value) return;
 	editingTranslationString.value = item ? item : null;
 	isTranslationStringDialogOpen.value = true;
 }

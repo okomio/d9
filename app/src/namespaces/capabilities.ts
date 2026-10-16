@@ -1,5 +1,13 @@
 import type { ActiveNamespaceContext, PlatformCapabilities } from './types';
 
+/**
+ * Project settings are one shared row, so only platform settings authority may see them.
+ * Without the namespace feature there is no scope to hide them from.
+ */
+export function canManageSharedSettings(active: ActiveNamespaceContext | null): boolean {
+	return !active || canManagePlatformResource(active.platform, 'settings');
+}
+
 export type NamespaceAdminResource = 'schema' | 'roles' | 'members' | 'flows';
 /** Specific namespace-management shortcuts; ordinary data field/row ACL remains in the snapshot. */
 export function canManageNamespaceResource(

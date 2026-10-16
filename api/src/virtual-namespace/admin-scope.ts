@@ -7,6 +7,12 @@
  * control plane, because that is instance-wide: users, settings and files are one
  * set of rows shared by every namespace.
  *
+ * This guard exists because `admin_access` is a single boolean meaning "skip ACL
+ * checks" everywhere. Before it, a local admin could read the whole user
+ * directory and PATCH a role belonging to another namespace. The durable fix is
+ * the effective-capability split D04 describes; this is the edge restriction that
+ * closes the escalation meanwhile.
+ *
  * The service layer independently enforces shared-write and namespace ownership
  * rules so alternate transports and nested writes have the same boundary.
  * Reads, including SEARCH, proceed to the service's membership visibility rules.

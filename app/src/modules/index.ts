@@ -31,9 +31,9 @@ export function registerModules(modules: ModuleConfig[]): {
 			await Promise.all(
 				modules.map(async (module) => {
 					const active = getNamespaceRuntime()?.state.active;
-					// These native modules require child-scoped backend reads/actions before they are safe to expose.
-					if (active?.namespace.kind === 'virtual' && ['files', 'settings', 'activity'].includes(module.id))
-						return null;
+					// The native Files and Activity modules still require child-scoped backend reads/actions.
+					// Settings has guarded namespace routes, and Users has its own scoped directory.
+					if (active?.namespace.kind === 'virtual' && ['files', 'activity'].includes(module.id)) return null;
 					if (!module.preRegisterCheck) return module;
 
 					// The extension API still declares a non-null role. Native module guards

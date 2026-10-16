@@ -31,7 +31,12 @@
 			<template #actions:prepend><component :is="`layout-actions-${localLayout}`" v-bind="layoutState" /></template>
 
 			<template #actions>
-				<search-input v-model="search" v-model:filter="presetFilter" :collection="collection" />
+				<search-input v-if="searchRequired" v-model="search">
+					<template #filter>
+						<p class="search-hint">{{ searchHint }}</p>
+					</template>
+				</search-input>
+				<search-input v-else v-model="search" v-model:filter="presetFilter" :collection="collection" />
 
 				<v-button v-tooltip.bottom="t('save')" icon rounded @click="save">
 					<v-icon name="check" />
@@ -39,7 +44,8 @@
 			</template>
 
 			<div class="layout">
-				<component :is="`layout-${localLayout}`" v-bind="layoutState">
+				<v-info v-if="searchRequired && !searchReady" :title="searchHint" icon="search" center />
+				<component :is="`layout-${localLayout}`" v-else v-bind="layoutState">
 					<template #no-results>
 						<v-info :title="t('item_count', 0)" :icon="collectionInfo.icon" center />
 					</template>
@@ -85,6 +91,14 @@ export default defineComponent({
 			type: Object as PropType<Filter>,
 			default: null,
 		},
+		searchRequired: {
+			type: Boolean,
+			default: false,
+		},
+		searchHint: {
+			type: String,
+			default: '',
+		},
 	},
 	emits: ['update:active', 'input'],
 	setup(props, { emit }) {
@@ -97,6 +111,7 @@ export default defineComponent({
 		const { collection } = toRefs(props);
 		const { info: collectionInfo } = useCollection(collection);
 		const { layout, layoutOptions, layoutQuery, search, filter: presetFilter } = usePreset(collection, ref(null), true);
+		if (props.searchRequired) search.value = null;
 
 		// This is a local copy of the layout. This means that we can sync it the layout without
 		// having use-preset auto-save the values
@@ -105,6 +120,14 @@ export default defineComponent({
 		const localQuery = ref(layoutQuery.value);
 
 		const currentLayout = useExtension('layout', localLayout);
+		const searchReady = computed(() => [...String(search.value ?? '').matchAll(/[\p{L}\p{N}]/gu)].length >= 2);
+
+		watch(
+			() => props.active,
+			(active) => {
+				if (active && props.searchRequired) search.value = null;
+			}
+		);
 
 		const layoutSelection = computed<any>({
 			get() {
@@ -146,6 +169,7 @@ export default defineComponent({
 			search,
 			presetFilter,
 			currentLayout,
+			searchReady,
 		};
 
 		function useActiveState() {
@@ -223,5 +247,10 @@ export default defineComponent({
 .layout {
 	display: contents;
 	--layout-offset-top: calc(var(--header-bar-height) - 1px);
+}
+
+.search-hint {
+	padding: 12px 16px;
+	color: var(--foreground-subdued);
 }
 </style>

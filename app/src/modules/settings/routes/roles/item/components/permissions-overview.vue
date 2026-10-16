@@ -73,6 +73,8 @@ import api from '@/api';
 import { appRecommendedPermissions, appMinimalPermissions } from '../../app-permissions';
 import { unexpectedError } from '@/utils/unexpected-error';
 import { orderBy } from 'lodash';
+import { getNamespaceRuntime } from '@/namespaces/live';
+import { isChildRolePermissionSupported } from '../../../../shared-schema';
 
 export default defineComponent({
 	components: { PermissionsOverviewHeader, PermissionsOverviewRow },
@@ -100,7 +102,12 @@ export default defineComponent({
 
 		const systemCollections = computed(() =>
 			orderBy(
-				collectionsStore.collections.filter((collection) => collection.collection.startsWith('directus_') === true),
+				collectionsStore.collections.filter(
+					(collection) =>
+						collection.collection.startsWith('directus_') === true &&
+						(getNamespaceRuntime()?.state.active?.namespace.kind !== 'virtual' ||
+							isChildRolePermissionSupported(collection.collection))
+				),
 				'name'
 			)
 		);
@@ -205,10 +212,15 @@ export default defineComponent({
 					if (props.role !== null && props.appAccess === true && useRecommended === true) {
 						await api.post(
 							'/permissions',
-							appRecommendedPermissions.map((permission) => ({
-								...permission,
-								role: props.role,
-							}))
+							appRecommendedPermissions
+								.filter((permission) => {
+									if (getNamespaceRuntime()?.state.active?.namespace.kind !== 'virtual') return true;
+									return isChildRolePermissionSupported(permission.collection ?? '');
+								})
+								.map((permission) => ({
+									...permission,
+									role: props.role,
+								}))
 						);
 					}
 
