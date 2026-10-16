@@ -35,13 +35,7 @@ export class AssetsService {
 		this.authorizationService = new AuthorizationService(options);
 	}
 
-	async getAsset(
-		id: string,
-		transformation: TransformationParams,
-		range?: Range
-	): Promise<{ stream: Readable; file: any; stat: Stat }> {
-		const storage = await getStorage();
-
+	async assertAssetAccess(id: string): Promise<File> {
 		const publicSettings = await this.knex
 			.select('project_logo', 'public_background', 'public_foreground')
 			.from('directus_settings')
@@ -49,14 +43,8 @@ export class AssetsService {
 
 		const systemPublicKeys = Object.values(publicSettings || {});
 
-		/**
-		 * This is a little annoying. Postgres will error out if you're trying to search in `where`
-		 * with a wrong type. In case of directus_files where id is a uuid, we'll have to verify the
-		 * validity of the uuid ahead of time.
-		 */
-		const isValidUUID = validateUUID(id, 4);
-
-		if (isValidUUID === false) throw new ForbiddenException();
+		// PostgreSQL rejects a non-UUID comparison against directus_files.id.
+		if (validateUUID(id, 4) === false) throw new ForbiddenException();
 
 		if (systemPublicKeys.includes(id) === false && this.accountability?.admin !== true) {
 			await this.authorizationService.checkAccess('read', 'directus_files', id);
@@ -71,6 +59,17 @@ export class AssetsService {
 			systemPublicKeys.includes(id) === false
 		)
 			throw new ForbiddenException();
+
+		return file;
+	}
+
+	async getAsset(
+		id: string,
+		transformation: TransformationParams,
+		range?: Range
+	): Promise<{ stream: Readable; file: any; stat: Stat }> {
+		const storage = await getStorage();
+		const file = await this.assertAssetAccess(id);
 
 		const exists = await storage.location(file.storage).exists(file.filename_disk);
 

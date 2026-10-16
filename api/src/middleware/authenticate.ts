@@ -8,8 +8,9 @@ import { InvalidCredentialsException, InvalidTokenException } from '../exception
 import asyncHandler from '../utils/async-handler.js';
 import { getIPFromReq } from '../utils/get-ip-from-req.js';
 import isDirectusJWT from '../utils/is-directus-jwt.js';
-import { verifyAccessJWT } from '../utils/jwt.js';
+import { verifyAccessJWT, verifyJWT } from '../utils/jwt.js';
 import { readNamespaceClaim } from '../virtual-namespace/claims.js';
+import { assertAssetGrantRequest } from '../virtual-namespace/asset-grant.js';
 import { ACCESS_COOKIE_CLEAR_OPTIONS, REFRESH_COOKIE_CLEAR_OPTIONS } from '../constants.js';
 import { resolveSharedAccountability } from '../virtual-namespace/authority.js';
 
@@ -17,6 +18,10 @@ import { resolveSharedAccountability } from '../virtual-namespace/authority.js';
  * Verify the passed JWT and assign the user ID and role to `req`
  */
 export const handler = async (req: Request, _res: Response, next: NextFunction) => {
+	if (req.token && isDirectusJWT(req.token)) {
+		assertAssetGrantRequest(req, verifyJWT(req.token, env['SECRET']));
+	}
+
 	const defaultAccountability: Accountability = {
 		user: null,
 		role: null,

@@ -37,10 +37,12 @@
 				</v-button>
 				<v-button
 					v-tooltip="t('download')"
+					v-asset-grant-link="getAssetUrl(image.id, true)"
 					icon
 					rounded
 					:href="getAssetUrl(image.id, true)"
 					:download="image.filename_download"
+					@click.prevent="openAsset(image.id, true, image.filename_download)"
 				>
 					<v-icon name="download" />
 				</v-button>
@@ -70,7 +72,15 @@
 				@input="update"
 			>
 				<template #actions>
-					<v-button secondary rounded icon :download="image.filename_download" :href="getAssetUrl(image.id, true)">
+					<v-button
+						v-asset-grant-link="getAssetUrl(image.id, true)"
+						secondary
+						rounded
+						icon
+						:download="image.filename_download"
+						:href="getAssetUrl(image.id, true)"
+						@click.prevent="openAsset(image.id, true, image.filename_download)"
+					>
 						<v-icon name="download" />
 					</v-button>
 				</template>
@@ -90,7 +100,7 @@ import { useRelationM2O } from '@/composables/use-relation-m2o';
 import { useRelationPermissionsM2O } from '@/composables/use-relation-permissions';
 import { RelationQuerySingle, useRelationSingle } from '@/composables/use-relation-single';
 import { formatFilesize } from '@/utils/format-filesize';
-import { getAssetUrl } from '@/utils/get-asset-url';
+import { getAssetUrl, openAsset } from '@/utils/get-asset-url';
 import { readableMimeType } from '@/utils/readable-mime-type';
 import DrawerItem from '@/views/private/components/drawer-item.vue';
 import FileLightbox from '@/views/private/components/file-lightbox.vue';

@@ -47,7 +47,13 @@
 
 			<v-list>
 				<template v-if="file">
-					<v-list-item clickable :download="file.filename_download" :href="getAssetUrl(file.id, true)">
+					<v-list-item
+						v-asset-grant-link="getAssetUrl(file.id, true)"
+						clickable
+						:download="file.filename_download"
+						:href="getAssetUrl(file.id, true)"
+						@click.prevent="openAsset(file.id, true, file.filename_download)"
+					>
 						<v-list-item-icon><v-icon name="get_app" /></v-list-item-icon>
 						<v-list-item-content>{{ t('download_file') }}</v-list-item-content>
 					</v-list-item>
@@ -89,7 +95,15 @@
 			@input="update"
 		>
 			<template #actions>
-				<v-button secondary rounded icon :download="file.filename_download" :href="getAssetUrl(file.id, true)">
+				<v-button
+					v-asset-grant-link="getAssetUrl(file.id, true)"
+					secondary
+					rounded
+					icon
+					:download="file.filename_download"
+					:href="getAssetUrl(file.id, true)"
+					@click.prevent="openAsset(file.id, true, file.filename_download)"
+				>
 					<v-icon name="download" />
 				</v-button>
 			</template>
@@ -150,7 +164,7 @@ import { useRelationM2O } from '@/composables/use-relation-m2o';
 import { useRelationPermissionsM2O } from '@/composables/use-relation-permissions';
 import { RelationQuerySingle, useRelationSingle } from '@/composables/use-relation-single';
 import { addQueryToPath } from '@/utils/add-query-to-path';
-import { getAssetUrl } from '@/utils/get-asset-url';
+import { getAssetUrl, openAsset } from '@/utils/get-asset-url';
 import { readableMimeType } from '@/utils/readable-mime-type';
 import { unexpectedError } from '@/utils/unexpected-error';
 import DrawerCollection from '@/views/private/components/drawer-collection.vue';

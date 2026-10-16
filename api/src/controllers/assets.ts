@@ -6,7 +6,7 @@ import { merge, pick } from 'lodash-es';
 import { ASSET_TRANSFORM_QUERY_KEYS, SYSTEM_ASSET_ALLOW_LIST } from '../constants.js';
 import getDatabase from '../database/index.js';
 import env from '../env.js';
-import { InvalidQueryException, RangeNotSatisfiableException } from '../exceptions/index.js';
+import { ForbiddenException, InvalidQueryException, RangeNotSatisfiableException } from '../exceptions/index.js';
 import logger from '../logger.js';
 import useCollection from '../middleware/use-collection.js';
 import { AssetsService } from '../services/assets.js';
@@ -18,10 +18,36 @@ import { getCacheControlHeader } from '../utils/get-cache-headers.js';
 import { getConfigFromEnv } from '../utils/get-config-from-env.js';
 import { getMilliseconds } from '../utils/get-milliseconds.js';
 import { isVirtualNamespaceEnabled } from '../virtual-namespace/config.js';
+import { getActiveNamespaceId } from '../virtual-namespace/context.js';
+import { assetGrantPath, mintAssetGrant } from '../virtual-namespace/asset-grant.js';
+import { verifyAccessJWT } from '../utils/jwt.js';
 
 const router = Router();
 
 router.use(useCollection('directus_files'));
+
+router.post(
+	'/:pk/grant',
+	asyncHandler(async (req, res) => {
+		const id = req.params['pk']!;
+		const namespace = getActiveNamespaceId();
+
+		if (!isVirtualNamespaceEnabled() || !namespace || !req.accountability?.user || !req.token) {
+			throw new ForbiddenException();
+		}
+
+		const rawUrl = req.body?.url;
+		if (typeof rawUrl !== 'string') throw new InvalidQueryException('Asset URL is required.');
+		const assetPath = assetGrantPath(rawUrl, id);
+		const service = new AssetsService({ accountability: req.accountability, schema: req.schema });
+		await service.assertAssetAccess(id);
+
+		const access = verifyAccessJWT(req.token, env['SECRET']);
+		res.setHeader('Cache-Control', 'no-store');
+		res.setHeader('Referrer-Policy', 'no-referrer');
+		res.json({ data: { grant: mintAssetGrant(access, namespace, assetPath) } });
+	})
+);
 
 router.get(
 	'/:pk/:filename?',
@@ -194,6 +220,8 @@ router.get(
 		res.setHeader('Content-Type', file.type);
 		res.setHeader('Accept-Ranges', 'bytes');
 		res.setHeader('Cache-Control', getCacheControlHeader(req, getMilliseconds(env['ASSETS_CACHE_TTL']), false, true));
+		if (req.query['asset_grant']) res.setHeader('Cache-Control', 'private, no-store');
+		res.setHeader('Referrer-Policy', 'no-referrer');
 		res.setHeader('Vary', vary.join(', '));
 
 		const unixTime = Date.parse(file.modified_on);

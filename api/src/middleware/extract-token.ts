@@ -18,6 +18,14 @@ const extractToken: RequestHandler = (req, _res, next) => {
 		token = req.query['access_token'] as string;
 	}
 
+	if (
+		req.method === 'GET' &&
+		/^\/assets\/[0-9a-f-]{36}$/i.test(req.path) &&
+		typeof req.query?.['asset_grant'] === 'string'
+	) {
+		token = req.query['asset_grant'];
+	}
+
 	if (req.headers && req.headers.authorization) {
 		const parts = req.headers.authorization.split(' ');
 
