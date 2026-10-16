@@ -19,10 +19,13 @@ Directus paths.
 - `/assets/:id` now resolves the authenticated namespace and checks file ownership before streaming bytes or a
   thumbnail. Anonymous asset requests can access only main-owned files, except the existing public
   project-logo/background assets. Explicit asset tokens take precedence over a cookie from another tab. Browser media
-  and download URLs from the native UI carry that tab's active token; Axios image requests already carry it in the
-  Authorization header. Asset responses vary on Authorization and Cookie so a browser cache cannot reuse one tab's
-  response for another tab's credentials.
+  and download links from the native UI use a five-minute grant for one file and its exact requested asset URL. The grant
+  is minted with the active namespace's Authorization header, carries no role or admin privilege, and is accepted only
+  for that asset GET; access and namespace ownership are checked again when it is used. Axios image requests continue
+  to use the Authorization header. Grant responses are private and non-cacheable, with a no-referrer policy; application
+  HTTP logs redact the grant query parameter. Reverse-proxy access logs still need their own query redaction policy.
+  Asset responses vary on Authorization and Cookie so a browser cache cannot reuse one tab's response for another tab's
+  credentials.
 
-Apply the database migration before running this API build with virtual namespaces enabled. The existing Infrastructure
-database was left unchanged during this work; the migration and ownership checks were exercised in a separate temporary
-PostgreSQL database, which was removed afterward.
+Apply the database migration before running this API build with virtual namespaces enabled. The migration and ownership
+checks were exercised in a separate temporary PostgreSQL database, which was removed afterward.
