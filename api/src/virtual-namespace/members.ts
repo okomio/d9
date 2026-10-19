@@ -24,6 +24,11 @@ export type MemberCandidate = Pick<Member, 'user_id' | 'email' | 'first_name' | 
 	role_id: string | null;
 };
 
+/** Include roles without members; membership counts cannot supply the navigation tree. */
+export async function listNamespaceRoles(database: Knex, namespaceId: string): Promise<{ id: string; name: string }[]> {
+	return database.select('id', 'name').from(ROLES_TABLE).where({ namespace: namespaceId }).orderBy('name', 'asc');
+}
+
 /**
  * Whether this caller may administer the namespace's members.
  *

@@ -1,7 +1,7 @@
 <template>
 	<component
 		:is="layoutWrapper"
-		v-if="!platform || !platformFilter"
+		:key="platform ? (platformFilter ? 'filtered' : 'all') : undefined"
 		ref="layoutRef"
 		v-slot="{ layoutState }"
 		v-model:selection="selection"
@@ -313,6 +313,10 @@
 						Members of the active namespace. Select users to change a local role or remove access.
 					</div>
 					<div v-else v-md="t('page_help_users_collection')" class="page-description" />
+					<p v-if="platformFilter">
+						This view lists explicit namespace memberships. Search, status, and identity sorting are available; other
+						filters require a server-side global user query.
+					</p>
 				</sidebar-detail>
 				<layout-sidebar-detail v-model="layout" :allowed-layouts="virtual ? ['cards', 'tabular'] : undefined">
 					<component :is="`layout-options-${layout}`" v-bind="layoutState" />
@@ -322,6 +326,9 @@
 				<export-sidebar-detail
 					v-if="!virtual"
 					collection="directus_users"
+					:export-disabled-message="
+						platformFilter ? 'Exporting the selected namespace requires a server-side global user export.' : undefined
+					"
 					:layout-query="layoutQuery"
 					:filter="mergeFilters(filter, roleFilter)"
 					:search="search"
@@ -330,7 +337,6 @@
 			</template>
 		</private-view>
 	</component>
-	<filtered-users v-else />
 </template>
 
 <script lang="ts" setup>
@@ -342,7 +348,7 @@ import NamespaceMemberDialogs from '../components/namespace-member-dialogs.vue';
 import { namespaceMemberItemsSource } from '../composables/use-namespace-member-items';
 import { itemsSourceKey } from '@wbce-d9/composables';
 import GlobalNavigation from '@/namespaces/global-admin/navigation.vue';
-import FilteredUsers from '@/namespaces/global-admin/filtered-users.vue';
+import { filteredUserItemsSource } from '@/namespaces/global-admin/use-filtered-user-items';
 import { useRoute } from 'vue-router';
 
 import api from '@/api';
@@ -378,6 +384,10 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 if (props.virtual) provide(itemsSourceKey, namespaceMemberItemsSource);
+if (props.platform)
+	provide(itemsSourceKey, (collection, query) =>
+		platformFilter.value ? filteredUserItemsSource(collection, query) : null
+	);
 if (props.virtual) provide('namespace-member-view', true);
 
 const route = useRoute();
@@ -459,7 +469,7 @@ if (props.virtual && !['cards', 'tabular'].includes(layout.value ?? '')) layout.
 // settings while excluding fields that require shared-profile reads.
 const directoryLayoutQuery = computed({
 	get() {
-		if (!props.virtual) return layoutQuery.value;
+		if (!props.virtual && !platformFilter.value) return layoutQuery.value;
 
 		const saved = layoutQuery.value ?? {};
 		const sortable = ['id', 'email', 'first_name', 'last_name', 'status'];
@@ -468,6 +478,7 @@ const directoryLayoutQuery = computed({
 			Array.isArray(saved.sort) && sortable.includes(String(saved.sort[0]).replace(/^-/, '')) ? saved.sort : ['email'];
 
 		if (layout.value !== 'tabular') return { ...saved, sort };
+		if (props.platform) return { ...saved, sort };
 
 		const allowed = ['first_name', 'last_name', 'email', 'status'];
 

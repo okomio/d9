@@ -13,6 +13,7 @@ import { defineLayout } from '@wbce-d9/utils';
 import { debounce } from 'lodash';
 import { computed, inject, ref, toRefs, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import { globalUsersPath } from '@/namespaces/global-admin/user-filter-route';
 import { getNamespaceRuntime } from '@/namespaces/live';
 import { withNamespace } from '@/namespaces/url';
 import TabularActions from './actions.vue';
@@ -309,7 +310,7 @@ export default defineLayout<LayoutOptions, LayoutQuery>({
 				} else {
 					const path =
 						collection.value === 'directus_users' && router.currentRoute.value.path.startsWith('/global-admin/users')
-							? `/global-admin/users/${encodeURIComponent(primaryKey)}`
+							? globalUsersPath(router.currentRoute.value.query, String(primaryKey))
 							: `/content/${collection.value}/${encodeURIComponent(primaryKey)}`;
 
 					const namespace = getNamespaceRuntime()?.state.active?.namespaceId;

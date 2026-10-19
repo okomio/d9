@@ -3,7 +3,7 @@ import knex from 'knex';
 import { createTracker, MockClient, type Tracker } from 'knex-mock-client';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { InvalidPayloadException } from '../exceptions/index.js';
-import { addMember, lookupUsers, updateMemberRole } from './members.js';
+import { addMember, listNamespaceRoles, lookupUsers, updateMemberRole } from './members.js';
 
 describe('namespace member lookup and assignment', () => {
 	let database: Knex;
@@ -36,6 +36,15 @@ describe('namespace member lookup and assignment', () => {
 		expect(tracker.history.select[0]!.bindings).toContain(20);
 		expect(tracker.history.select[0]!.bindings).toContain('%a\\_b%');
 		expect(tracker.history.select[0]!.bindings).toContain('tracking');
+	});
+
+	test('lists every role owned by a namespace, including roles with no members', async () => {
+		tracker.on.select('directus_roles').response([{ id: 'empty-role', name: 'Viewer' }]);
+		const roles = await listNamespaceRoles(database, 'tracking');
+		expect(roles).toEqual([{ id: 'empty-role', name: 'Viewer' }]);
+		expect(tracker.history.select[0]!.sql).toContain('"namespace" = $1');
+		expect(tracker.history.select[0]!.bindings).toContain('tracking');
+		expect(tracker.history.select[0]!.sql).not.toContain('directus_user_namespaces');
 	});
 
 	test('adds a namespace membership without changing the shared user record', async () => {

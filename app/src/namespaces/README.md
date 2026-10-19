@@ -12,7 +12,9 @@ opens the native chooser dialog, and project and active area remain visible in t
 guarded and validated a change from an active area, its final navigation performs a full browser page load at the target
 `?ns=` URL. Initial bootstrap does not reload again. The static chooser and recovery routes reuse the same card list
 when no protected shell exists. Global Administration lists a namespace's members through the membership API; its **All
-Users** entry opens the native Users module in the project scope, because the shared directory is only readable there.
+Users** entry keeps the native Users directory inside Global Administration. A Global Admin may read shared accounts
+from any active content namespace; choosing a sidebar namespace or role filters explicit memberships without switching
+the content namespace.
 
 Enable this frontend with `VITE_VIRTUAL_NAMESPACES_ENABLED=true` in a build or dev session only when the backend has
 `VIRTUAL_NAMESPACES_ENABLED=true`, registry migrations, and ready children. The frontend flag defaults off because the
