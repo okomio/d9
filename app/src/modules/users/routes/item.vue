@@ -204,7 +204,8 @@ import RevisionsDrawerDetail from '@/views/private/components/revisions-drawer-d
 import SaveOptions from '@/views/private/components/save-options.vue';
 import { useCollection } from '@wbce-d9/composables';
 import { Field } from '@wbce-d9/types';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
+import { globalUsersPath } from '@/namespaces/global-admin/user-filter-route';
 import UsersNavigation from '../components/navigation.vue';
 import GlobalNavigation from '@/namespaces/global-admin/navigation.vue';
 import UserInfoSidebarDetail from '../components/user-info-sidebar-detail.vue';
@@ -234,7 +235,8 @@ export default defineComponent({
 		const { t, locale } = useI18n();
 
 		const router = useRouter();
-		const usersPath = props.platform ? '/global-admin/users' : '/users';
+		const route = useRoute();
+		const usersPath = props.platform ? globalUsersPath(route.query) : '/users';
 
 		const form = ref<HTMLElement>();
 		const fieldsStore = useFieldsStore();

@@ -10,6 +10,7 @@ import {
 	addMember,
 	canManageMembers,
 	listMembers,
+	listNamespaceRoles,
 	lookupUsers,
 	removeMember,
 	updateMemberRole,
@@ -94,6 +95,20 @@ router.get(
  * Counts come from memberships: `directus_roles.users` is the shared primary-role
  * relation and says nothing about this namespace.
  */
+router.get(
+	'/:namespace/roles',
+	asyncHandler(async (req, res, next) => {
+		if (!req.accountability?.user) throw new InvalidCredentialsException();
+		if (!hasGlobalAuthority(req.accountability)) throw new ForbiddenException();
+		const namespaceId = req.params['namespace']!;
+		const namespace = await getNamespace(getDatabase(), namespaceId);
+		if (!namespace || namespace.kind !== 'virtual') throw new ForbiddenException();
+		res.locals['payload'] = { data: await listNamespaceRoles(getDatabase(), namespaceId) };
+		return next();
+	}),
+	respond
+);
+
 router.get(
 	'/:namespace/members',
 	asyncHandler(async (req, res, next) => {

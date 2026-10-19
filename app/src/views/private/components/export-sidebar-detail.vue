@@ -53,13 +53,15 @@
 			</template>
 
 			<div class="field full">
-				<v-button small full-width @click="exportDialogActive = true">
+				<v-notice v-if="exportDisabledMessage" type="warning">{{ exportDisabledMessage }}</v-notice>
+				<v-button small full-width :disabled="!!exportDisabledMessage" @click="exportDialogActive = true">
 					{{ t('export_items') }}
 				</v-button>
 
 				<button
 					v-tooltip.bottom="t('presentation_text_values_cannot_be_reimported')"
 					class="download-local"
+					:disabled="!!exportDisabledMessage"
 					@click="$emit('download')"
 				>
 					{{ t('download_page_as_csv') }}
@@ -81,6 +83,7 @@
 					rounded
 					icon
 					:loading="exporting"
+					:disabled="!!exportDisabledMessage"
 					@click="startExport"
 				>
 					<v-icon :name="location === 'download' ? 'download' : 'start'" />
@@ -258,12 +261,14 @@ interface Props {
 	layoutQuery?: LayoutQuery;
 	filter?: Filter;
 	search?: string;
+	exportDisabledMessage?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
 	layoutQuery: undefined,
 	filter: undefined,
 	search: undefined,
+	exportDisabledMessage: undefined,
 });
 
 const emit = defineEmits(['refresh', 'download']);

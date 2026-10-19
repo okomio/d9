@@ -8,6 +8,7 @@ import { defineLayout, getFieldsFromTemplate } from '@wbce-d9/utils';
 import { clone } from 'lodash';
 import { computed, inject, ref, toRefs } from 'vue';
 import { useRoute } from 'vue-router';
+import { globalUsersPath } from '@/namespaces/global-admin/user-filter-route';
 import CardsActions from './actions.vue';
 import CardsLayout from './cards.vue';
 import CardsOptions from './options.vue';
@@ -208,7 +209,7 @@ export default defineLayout<LayoutOptions, LayoutQuery>({
 			if (memberView) return;
 			if (!primaryKeyField.value) return;
 			if (props.collection === 'directus_users' && route.path.startsWith('/global-admin/users'))
-				return `/global-admin/users/${encodeURIComponent(item[primaryKeyField.value.field])}`;
+				return globalUsersPath(route.query, String(item[primaryKeyField.value.field]));
 			return `/content/${props.collection}/${encodeURIComponent(item[primaryKeyField.value.field])}`;
 		}
 
