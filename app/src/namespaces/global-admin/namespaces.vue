@@ -23,6 +23,19 @@
 					</div>
 				</template>
 			</search-input>
+			<v-button v-if="selectedNamespace" v-tooltip.bottom="t('edit')" rounded icon secondary @click="openEdit">
+				<v-icon name="edit" />
+			</v-button>
+			<v-button
+				v-if="selectedNamespace"
+				v-tooltip.bottom="t('delete_label')"
+				rounded
+				icon
+				secondary
+				@click="openDelete"
+			>
+				<v-icon name="delete" />
+			</v-button>
 			<v-button v-tooltip.bottom="'Create Namespace'" rounded icon to="/global-admin/namespaces/new">
 				<v-icon name="add" />
 			</v-button>
@@ -44,7 +57,7 @@
 				v-model:headers="headers"
 				:items="filteredNamespaces"
 				:loading="loading"
-				show-select="multiple"
+				show-select="one"
 				show-resize
 				fixed-header
 				item-key="id"
@@ -80,6 +93,35 @@
 			/>
 			<v-notice v-if="switchError" type="danger">{{ switchError }}</v-notice>
 		</div>
+		<v-dialog v-model="editOpen" @esc="editOpen = false">
+			<form @submit.prevent="saveName">
+				<v-card>
+					<v-card-title>Edit Namespace</v-card-title>
+					<v-card-text>
+						<v-notice v-if="mutationError" type="danger">{{ mutationError }}</v-notice>
+						<label>Namespace name</label>
+						<v-input v-model="editName" :disabled="mutating" />
+					</v-card-text>
+					<v-card-actions>
+						<v-button secondary @click="editOpen = false">{{ t('cancel') }}</v-button>
+						<v-button type="submit" :loading="mutating" :disabled="!editName.trim()">{{ t('save') }}</v-button>
+					</v-card-actions>
+				</v-card>
+			</form>
+		</v-dialog>
+		<v-dialog v-model="confirmDelete" @esc="confirmDelete = false">
+			<v-card>
+				<v-card-title>Delete {{ selectedNamespace?.name }}?</v-card-title>
+				<v-card-text>
+					<p>The namespace can be deleted only when it has no user-created data or configuration.</p>
+					<v-notice v-if="mutationError" type="danger">{{ mutationError }}</v-notice>
+				</v-card-text>
+				<v-card-actions>
+					<v-button secondary @click="confirmDelete = false">{{ t('cancel') }}</v-button>
+					<v-button kind="danger" :loading="mutating" @click="remove">{{ t('delete_label') }}</v-button>
+				</v-card-actions>
+			</v-card>
+		</v-dialog>
 	</private-view>
 </template>
 
@@ -90,6 +132,7 @@ import { ensureNamespaceRuntime } from '@/namespaces/live';
 import { canManagePlatformResource } from '@/namespaces/capabilities';
 import type { HeaderRaw } from '@/components/v-table/types';
 import SearchInput from '@/views/private/components/search-input.vue';
+import api from '@/api';
 import GlobalNavigation from './navigation.vue';
 
 const runtime = ensureNamespaceRuntime();
@@ -98,7 +141,19 @@ const loading = ref(false);
 const entering = ref(false);
 const error = ref<string | null>(null);
 const switchError = ref<string | null>(null);
-const selected = ref<{ id: string }[]>([]);
+const selectedRows = ref<{ id: string }[]>([]);
+// v-table's one-row mode changes the control, while its model emitter still appends.
+const selected = computed<{ id: string }[]>({
+	get: () => selectedRows.value,
+	set: (rows) => {
+		selectedRows.value = rows.length > 1 ? [rows[rows.length - 1]!] : rows;
+	},
+});
+const editOpen = ref(false);
+const editName = ref('');
+const confirmDelete = ref(false);
+const mutating = ref(false);
+const mutationError = ref<string | null>(null);
 const search = ref<string | null>(null);
 const readinessFilter = ref('all');
 const accessFilter = ref('all');
@@ -125,6 +180,9 @@ const namespaces = computed(() =>
 		.filter((choice) => choice.namespace.kind === 'virtual')
 		.map((choice) => ({ ...choice.namespace, canUseApp: choice.access.canUseApp }))
 );
+const selectedNamespace = computed(() =>
+	selected.value.length === 1 ? namespaces.value.find((row) => row.id === selected.value[0]?.id) ?? null : null
+);
 
 const filteredNamespaces = computed(() => {
 	const query = search.value?.trim().toLocaleLowerCase() ?? '';
@@ -141,6 +199,12 @@ watch([search, readinessFilter, accessFilter], () => {
 	selected.value = [];
 });
 
+watch(selected, () => {
+	editOpen.value = false;
+	confirmDelete.value = false;
+	mutationError.value = null;
+});
+
 const headers = ref<HeaderRaw[]>([
 	{ text: 'Name', value: 'name', width: 280 },
 	{ text: 'Readiness', value: 'readiness', width: 160 },
@@ -154,6 +218,55 @@ onMounted(() => {
 function clearFilters() {
 	readinessFilter.value = 'all';
 	accessFilter.value = 'all';
+}
+
+function openEdit() {
+	if (!selectedNamespace.value) return;
+	editName.value = selectedNamespace.value.name;
+	mutationError.value = null;
+	editOpen.value = true;
+}
+
+function openDelete() {
+	if (!selectedNamespace.value) return;
+	mutationError.value = null;
+	confirmDelete.value = true;
+}
+
+function writeError(cause: any, fallback: string) {
+	return cause?.response?.data?.errors?.[0]?.message || fallback;
+}
+
+async function saveName() {
+	const target = selectedNamespace.value;
+	if (!target || mutating.value || !editName.value.trim()) return;
+	mutating.value = true;
+	mutationError.value = null;
+	try {
+		await api.patch(`/namespaces/${encodeURIComponent(target.id)}`, { name: editName.value.trim() });
+		editOpen.value = false;
+		await refresh();
+	} catch (cause) {
+		mutationError.value = writeError(cause, 'Could not rename namespace');
+	} finally {
+		mutating.value = false;
+	}
+}
+
+async function remove() {
+	const target = selectedNamespace.value;
+	if (!target || mutating.value) return;
+	mutating.value = true;
+	mutationError.value = null;
+	try {
+		await api.delete(`/namespaces/${encodeURIComponent(target.id)}`);
+		confirmDelete.value = false;
+		await refresh();
+	} catch (cause) {
+		mutationError.value = writeError(cause, 'Could not delete namespace');
+	} finally {
+		mutating.value = false;
+	}
 }
 
 async function refresh() {

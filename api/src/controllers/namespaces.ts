@@ -16,8 +16,14 @@ import {
 } from '../virtual-namespace/members.js';
 import { getNamespace } from '../virtual-namespace/registry.js';
 import { hasGlobalAuthority } from '../virtual-namespace/authority.js';
+import { createEmptyNamespace, deleteEmptyNamespace, renameNamespace } from '../virtual-namespace/management.js';
 
 const router = Router();
+
+function assertGlobalAdmin(req: Request): void {
+	if (!req.accountability?.user) throw new InvalidCredentialsException();
+	if (!hasGlobalAuthority(req.accountability)) throw new ForbiddenException();
+}
 
 /**
  * Authority for membership administration of one namespace.
@@ -83,6 +89,47 @@ router.get(
 
 		res.locals['payload'] = { data, default: defaultNamespace };
 
+		return next();
+	}),
+	respond
+);
+
+/** Global control-plane mutations never derive authority from a local namespace role. */
+router.post(
+	'/',
+	asyncHandler(async (req, res, next) => {
+		assertGlobalAdmin(req);
+		if (!req.body || Object.keys(req.body).length !== 1 || !Object.hasOwn(req.body, 'name')) {
+			throw new InvalidPayloadException('Only the namespace name may be provided');
+		}
+		const namespace = await createEmptyNamespace(getDatabase(), req.body?.name, req.header('Idempotency-Key'));
+		res.status(201);
+		res.locals['payload'] = { data: namespace };
+		return next();
+	}),
+	respond
+);
+
+router.patch(
+	'/:namespace',
+	asyncHandler(async (req, res, next) => {
+		assertGlobalAdmin(req);
+		if (!req.body || Object.keys(req.body).length !== 1 || !Object.hasOwn(req.body, 'name')) {
+			throw new InvalidPayloadException('Only the namespace name may be edited');
+		}
+		res.locals['payload'] = { data: await renameNamespace(getDatabase(), req.params['namespace']!, req.body.name) };
+		return next();
+	}),
+	respond
+);
+
+router.delete(
+	'/:namespace',
+	asyncHandler(async (req, res, next) => {
+		assertGlobalAdmin(req);
+		await deleteEmptyNamespace(getDatabase(), req.params['namespace']!);
+		res.status(204);
+		res.locals['payload'] = null;
 		return next();
 	}),
 	respond
