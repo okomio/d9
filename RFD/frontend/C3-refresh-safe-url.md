@@ -11,13 +11,15 @@ Resolve the requested namespace before protected reads. Stable identity survives
 - **D13:** adopt one admin URL format. `?ns=<stable-id>` is the current frontend recommendation, not an agreed contract.
 - **D01–D04 / C4:** bootstrap identity/default/no-access states, target-scoped refresh and effective app/TFA policy.
 - **C2:** coordinator state machine and navigation transaction permit.
-- **D10:** permitted self-service/profile links and `last_page` tracking. **D08:** share/public resolution before those routes are exposed.
+- **D10:** permitted native self-service/profile route and `last_page` tracking. The profile's saved default namespace requires a separate server-side preference contract. **D08:** share/public resolution before those routes are exposed.
 
 Provide the minimal static loading/landing host and permit interface during the shared C2/C4 skeleton. Full routing integration follows; this avoids a circular wait for a dynamic target module.
 
 ## URL and route rules
 
-For namespace routes missing `ns`, canonicalize the current authorized namespace on internal navigation. On initial entry resolve the permitted saved/default namespace or show the chooser. A different explicit namespace invokes C2. Use stable IDs, not display names, and never place a token in the admin URL.
+For namespace routes missing `ns`, canonicalize the current authorized namespace on internal navigation. On initial entry, an explicit safe internal destination/`?ns=` target takes precedence. Otherwise use the signed-in user's saved **Default Virtual Namespace** only if it is ready and still enterable, automatically select and persist a sole eligible namespace, or show the chooser for several eligible namespaces without a valid preference. Zero eligible namespaces reach no-access. The current `GET /namespaces.default` environment/fallback value is not a saved user preference and must not silently send users to shared `main` content. A different explicit namespace invokes C2. Use stable IDs, not display names, and never place a token in the admin URL.
+
+The avatar opens the signed-in user's native editable profile directly. The current `/users/:id` link redirects to the directory in a child because the shared user item route is protected there; replace this shortcut with a permitted self-profile route, while retaining a separate Global Admin path to the native shared-user item. A child user's self-profile must read/write only explicitly permitted personal fields through a server-enforced contract and must not reveal the shared directory or local-role editor. Saving a preferred landing namespace does not switch the current tab; it governs the next initial sign-in/session resolution. An explicit target deep link remains authoritative after validation. Revoked, deleted or unready preferences cannot grant access and resolve to the sole eligible choice or chooser instead.
 
 Intentional picker switches open a safe target landing and discard source item/bookmark/query state. Explicit copied target deep links retain their destination intent only after target validation. Same-namespace links preserve unrelated query parameters. Browser Back/Forward across namespaces uses the same dirty-aware transaction; cancellation restores source location without minting a target token.
 
@@ -40,6 +42,8 @@ Chooser/landing/platform routes remain reachable without dynamic Content routes.
 - [ ] Commit static target URL before protected routing; verify missing/inaccessible collection/item/bookmark produces a safe target route.
 - [ ] Replace unscoped last-collection/return navigation with `(user, namespace)` storage at both read/write sites; ignore old unscoped values.
 - [ ] Cancel router's delayed `trackPage()` write on switch and implement the D10 choice for personal tracking/profile links.
+- [ ] Make the avatar open the native editable self-profile from every virtual namespace, with backend-enforced personal-field access; no redirect through the child member directory.
+- [ ] Resolve initial login from validated explicit target, then saved per-user default, then sole eligible namespace, then chooser/no-access. Persist the preference server-side and keep it separate from the active namespace and the `GET /namespaces.default` fallback.
 - [ ] Keep public/share route resolution separate; apply platform-route global guards before side effects.
 - [ ] Verify copied links, reload, login/TFA/SSO, history and two-tab behaviour with C2/C4.
 
@@ -60,6 +64,7 @@ Existing: `app/src/router.ts`, `routes/login/`, `routes/shared/`, `routes/tfa-se
 - [ ] Back/Forward and query-only switches respect Stay/Discard; target hydration failure reloads the target safely.
 - [ ] Namespace-specific saved navigation, no-access/API-only/empty states and two tabs behave distinctly and correctly.
 - [ ] Public/platform routes preserve their separate authorization rules; legacy API paths are unaffected.
+- [ ] The avatar reaches the signed-in user's editable native profile; a saved eligible default skips the chooser on a fresh login, while an invalid preference cannot expose `main` or another unauthorized namespace.
 
 ## Completion evidence
 

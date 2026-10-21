@@ -8,12 +8,13 @@ This product clarification updates C5/C7. It defines the requested privileges an
 | --- | --- | --- | --- |
 | Create virtual namespace | Yes | No | Global Administration → Virtual Namespaces |
 | Create/edit local roles | Yes, after entering target | Own namespace only | Target Settings → Roles & Permissions |
-| Add existing user / change or remove local assignment | Yes, after entering target | Own namespace only | Target Users/Members → Add User / assignment editor |
+| Add existing user / change or remove local assignment | Yes, from the global user profile or after entering the target | Own namespace only | Global Users → user profile → Namespace Access; target User Directory/role editor |
 | Create shared user / invite new user | Yes | No | Global Users; select initial namespace/role assignments |
 | Edit global user profile | Yes | No | Global Users |
+| Set preferred landing namespace | Own preference; may manage another user's preference through Global Users | Own preference | Native user profile |
 | Browse users grouped by namespace/local role | Yes, across namespaces | Local members only | Global Users filters versus local Members |
 
-Creating/inviting an account with initial memberships is the explicit exception to local-only assignment workflows. General additions of existing users and subsequent local-role changes remain inside the virtual namespace. The global user editor shows memberships and **Open namespace** links; it does not introduce an unrestricted second membership editor. This interpretation reconciles the user's two requirements and should be retained unless product scope explicitly expands.
+The Global Admin user editor also manages that user's explicit namespace memberships. This updates the earlier local-only interpretation: a Global Admin can assign an existing namespace, change its local role, or remove that membership from the shared user's native profile. A local namespace admin still manages only the active namespace, and ordinary users cannot grant themselves roles. Creating/inviting an account with initial memberships remains a separate onboarding operation.
 
 Global Admin authority continues to inherit from main-namespace admin access. It remains separate from any child role's `admin_access` flag. Global profile/account operations and directory visibility retain platform/main authority even when the active content namespace is a child.
 
@@ -45,7 +46,21 @@ Virtual Namespaces                   [management view]
 - The Users sidebar has no create-namespace action. C7's Virtual Namespaces view owns creation and refreshes the directory tree/switcher after readiness. Neither creation nor filtering automatically enters a namespace.
 - Preserve Invite User and Create User actions. “Create User” is a clearer label for the screenshot's generic “Create Item”; final labels/icons are a UI choice.
 
-The Virtual Namespaces view owns registry/readiness/create/error/reconciliation and explicit entry. Its list, row selection and supported contextual actions should use the original Directus patterns. Role creation and existing-user addition are reached by entering the target, not by adding role editors to the global sidebar. The backend currently has no platform create/status/edit/delete HTTP operation, so the live form and mutation actions wait for D06 rather than reporting mock success.
+The Virtual Namespaces view owns registry/readiness/create/error/reconciliation and explicit entry. Its list, row selection and supported contextual actions should use the original Directus patterns. Role creation is reached by entering the target; existing-user assignment is also available from a Global Admin's user profile, never as a role editor in the global sidebar. Older backend inventories in this design set predate namespace-management endpoints; check the current branch before treating a listed D06 gap as current.
+
+## Existing user profile: Namespace Access
+
+Keep the native Directus `directus_users` item route, profile fields, save controls, information sidebar and keyboard behavior. Add one **Namespace Access** relationship section in the form, visually following the existing Platformplus Teams relation in the reference screenshot. Render a compact native-style table/list with **Virtual Namespace** and **Role** columns. Each explicit membership appears once; the role is the local role in that namespace. Show inherited Global Admin access separately from explicit membership rows so a missing row does not look like loss of authority.
+
+The only add action is **Add Existing**, matching the native relation pattern. It opens a native selector of existing ready virtual namespaces the Global Admin may manage, then presents only roles owned by the chosen namespace. There is no **Create New** namespace or role action in the profile. An existing row can change its role or remove that one membership using native relation controls and confirmation patterns. Removal never deletes the shared account or memberships in other namespaces. The backend must enforce role ownership, duplicates, last-admin/self-removal rules and authorization; disabled or unavailable operations should explain the missing contract rather than fabricate success. Refresh the table and directory filters after a successful change.
+
+This relationship section is for Global Admin user editing, including their own record subject to the backend's self/last-admin guards. An ordinary user's self-profile may show memberships read-only, but self-service must not expose role assignment. The native profile route must remain editable for permitted personal fields; neither route should fall back to the child User Directory merely because a virtual namespace is active.
+
+## Own profile and default landing namespace
+
+Clicking the avatar opens the signed-in user's **native editable profile directly**, as in production. Global Admin may use the Global Users item route for their own record; a child user needs a namespace-safe self-profile route backed by an explicit permitted `/users/me` read/write contract. It must not expose shared user directory or global profile fields through a child token. Keep the existing native form and allowed actions rather than replacing it with a custom profile page.
+
+Add **Default Virtual Namespace** as a personal profile field. It selects one existing, ready namespace the user may enter and use in the app; Global Admins may choose among ready children through inherited access. The signed-in user can change their own preference, and a Global Admin can change it on another user's profile. With exactly one eligible namespace, select and save it automatically so it remains the default if the user later gains another membership. With several and no valid saved preference, show the chooser at sign-in. With none, show the no-access state. Saving a preference changes the next initial landing, not the active namespace in the current tab; an explicit `?ns=` URL still takes precedence for that navigation. A revoked, deleted, unready or otherwise inaccessible saved choice must never grant access or silently expose `main` content: clear or ignore it and resolve to another sole eligible namespace or the chooser. The preference is stored and validated server-side so it survives login, refresh and devices. It is distinct from the current environment/fallback value returned as `GET /namespaces.default`.
 
 Global Admins have inherited access without membership rows. A namespace member filter lists explicit memberships; show inherited Global Admin access separately as a banner or section. A local role filter means assignment to that role, not every account with effective inherited admin authority. This prevents an “Administrator” filter from silently mixing two different access sources.
 
@@ -60,7 +75,7 @@ Add a repeatable **Namespace access** section to each form:
 
 Each selected namespace loads its own roles. No combined role list or role-name matching is allowed. Changing/removing a namespace clears its selected role and cancels/discards stale lookup results. Allow additional rows, prevent duplicate namespace selection, and validate `(namespace_id, role_id)` ownership on the server too. Do not offer a role from another namespace or a namespace still provisioning.
 
-When launching from a namespace/role filter, prefill that initial assignment but show it explicitly; the admin can add other rows. The recommendation is to allow creating a global account with no initial memberships, then add it locally later. Whether empty assignments are allowed is a product/API decision in D14, not an implemented rule. An empty namespace with no local roles directs the admin to enter it and create roles first; the global form must not create a role as a shortcut.
+When launching from a namespace/role filter, prefill that initial assignment but show it explicitly; the admin can add other rows. The recommendation is to allow creating a global account with no initial memberships, then add access from its Global Admin profile or inside a target namespace later. Whether empty assignments are allowed is a product/API decision in D14, not an implemented rule. An empty namespace with no local roles directs the admin to enter it and create roles first; the global form must not create a role as a shortcut.
 
 For invitation, the selected rows determine initial access for the invited account. Account creation/invitation and initial memberships need one coherent backend operation or explicit recoverable transaction semantics. Send the invitation only after memberships are committed. Existing-account emails must not create duplicates or silently change existing memberships: show the existing-account result and the local Add User path. Pending invitations, resend, batch invite and uniqueness/conflict behaviour require the D14 contract.
 
@@ -80,11 +95,12 @@ Global filters query memberships rather than `directus_users.role`. Filter befor
 
 ## Ownership and open dependency
 
-- **C5:** global user directory/tree, global create/invite initial-assignment forms, local Members/roles and their strict operation boundaries.
+- **C5:** global user directory/tree, native global user-profile membership section, global create/invite initial-assignment forms, local Members/roles and their strict operation boundaries.
 - **C7:** global Administration rail entry, namespace-management view and its Create Namespace form/registry changes. Global user authority and namespace-management authority remain separate capability checks.
 - **C3:** global directory filter URL and explicit entry; filter selection never becomes active content namespace selection.
 - **C2/C4:** scoped state/request/access isolation and actual Enter transactions; global directory reads use explicit authorized projections, not content-token switching.
-- **D14:** global directory namespace/role reads, distinct counts, account/invite with initial memberships, cross-namespace role validation, no-membership accounts, existing/pending emails, transaction/idempotency and invitation-delivery ordering. Endpoint inventory's current single-role invite/create operations do not provide this contract.
+- **D14:** global directory namespace/role reads, distinct counts, per-user membership projection and cross-namespace role options for the profile, account/invite with initial memberships, cross-namespace role validation, no-membership accounts, existing/pending emails, transaction/idempotency and invitation-delivery ordering. Existing per-namespace membership writes do not by themselves provide the complete global profile read and onboarding contracts.
+- **D10/default preference:** a namespace-safe self-profile read/write route and a persistent, server-validated preferred namespace field. The current `/namespaces.default` fallback is not this preference.
 
 ## Acceptance checks
 
@@ -93,7 +109,8 @@ Global filters query memberships rather than `directus_users.role`. Filter befor
 - [ ] Changing a namespace row clears its role; stale lookup cannot select a role for another namespace.
 - [ ] A local admin adds an existing user locally and cannot create/invite/edit a global profile or operate on another namespace.
 - [ ] Global namespace/role filters preserve the active content token/context; Open namespace uses the real switch transaction.
-- [ ] Global role creation and later membership edits occur in the target namespace; namespace creation occurs only in C7 without implicit switching.
+- [ ] Global Admin can view, add, change and remove a user's explicit membership from the native user profile; local administrators remain confined to the target namespace. Namespace creation occurs only in C7 without implicit switching.
+- [ ] The avatar opens the signed-in user's native editable profile. A saved eligible default bypasses the sign-in chooser; explicit deep links take precedence and an invalid preference grants no access.
 - [ ] Inherited Global Admin access is labelled separately from explicit local role membership, and pagination/counts reflect the selected membership filter.
 
 No application implementation, account creation, email sending or runtime verification is performed by this design update.

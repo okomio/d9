@@ -8,11 +8,11 @@ A virtual namespace is a full CMS workspace with scoped content, configuration a
 
 The left rail retains Content, Files, local user management and Settings as product capabilities. Local user management is the member/role-assignment experience specified in C5; the final icon/name/route may differ from the current Users directory. A standard user need not see admin modules or every action. Visibility continues to follow role permissions, collection metadata and installed features, as in the current product.
 
-The agreed privilege boundaries remain: users/global profiles are managed in the main namespace; child admins manage existing users' local role assignments; only Global Admin creates namespaces on the platform page. Local admins cannot modify shared platform configuration through local Settings. These boundaries do not justify removing unrelated file/content/layout/automation features.
+The agreed privilege boundaries remain: Global Administration manages shared users/profiles and lets Global Admin edit explicit namespace-role assignments from the native user profile; child admins manage existing users' local role assignments only within their active child; only Global Admin creates namespaces on the platform page. Ordinary users may edit permitted fields of their own native profile, including a validated default landing namespace, without shared directory access. Local admins cannot modify shared platform configuration through local Settings. These boundaries do not justify removing unrelated file/content/layout/automation features.
 
 Missing ownership/API decisions block completion of the affected feature. They are not permission to drop it from the final namespace workspace. A reduced temporary demo must name its missing functionality and cannot be reported as the completed feature. C6's optional scope is distinct namespace branding, not the existing Settings or Translation Strings feature.
 
-Global user administration now also includes [namespace/role directory filtering and multi-namespace onboarding](global-admin-design.md). Creating/inviting an account may assign its initial local roles globally; general existing-user additions/role changes remain local. Each membership holds one local role; a user may have many memberships.
+Global user administration now also includes [namespace/role directory filtering, native user-profile membership editing and multi-namespace onboarding](global-admin-design.md). Creating/inviting an account may assign its initial local roles globally; Global Admin may later edit assignments from the user profile, while local admins make changes only inside their own namespace. Each membership holds one local role; a user may have many memberships.
 
 ## F1 — switch-behaviour traceability
 
