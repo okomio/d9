@@ -11,7 +11,12 @@
 		</template>
 
 		<template #actions>
-			<v-dialog v-model="confirmDelete" :disabled="deleteAllowed === false" @esc="confirmDelete = false">
+			<v-dialog
+				v-if="!selfProfile"
+				v-model="confirmDelete"
+				:disabled="deleteAllowed === false"
+				@esc="confirmDelete = false"
+			>
 				<template #activator="{ on }">
 					<v-button
 						v-tooltip.bottom="deleteAllowed ? t('delete_label') : t('not_allowed')"
@@ -41,7 +46,7 @@
 			</v-dialog>
 
 			<v-dialog
-				v-if="collectionInfo.meta && collectionInfo.meta.archive_field && !isNew"
+				v-if="!selfProfile && collectionInfo.meta && collectionInfo.meta.archive_field && !isNew"
 				v-model="confirmArchive"
 				:disabled="archiveAllowed === false"
 				@esc="confirmArchive = false"
@@ -75,7 +80,7 @@
 			</v-dialog>
 
 			<v-button
-				v-tooltip.bottom="saveAllowed ? t('save') : t('not_allowed')"
+				v-tooltip.bottom="canSave ? t('save') : t('not_allowed')"
 				rounded
 				icon
 				:loading="saving"
@@ -87,7 +92,7 @@
 				<template #append-outer>
 					<save-options
 						v-if="isSavable && !platform"
-						:disabled-options="createAllowed ? [] : ['save-and-add-new', 'save-as-copy']"
+						:disabled-options="selfProfile || !createAllowed ? ['save-and-add-new', 'save-as-copy'] : []"
 						@save-and-stay="saveAndStay"
 						@save-and-add-new="saveAndAddNew"
 						@save-as-copy="saveAsCopyAndNavigate"
@@ -99,7 +104,7 @@
 
 		<template #navigation>
 			<global-navigation v-if="platform" />
-			<users-navigation v-else :current-role="(item && item.role) || role" />
+			<users-navigation v-else-if="!selfProfile || canManageMembers" :current-role="(item && item.role) || role" />
 		</template>
 
 		<div class="user-item">
@@ -141,13 +146,19 @@
 			<v-form
 				ref="form"
 				v-model="edits"
-				:disabled="isNew ? false : updateAllowed === false"
+				:disabled="isNew ? false : !canEdit"
 				:fields="formFields"
 				:loading="loading"
 				:initial-values="item"
 				:batch-mode="isBatch"
-				:primary-key="primaryKey"
+				:primary-key="selfProfile ? userStore.currentUser?.id : primaryKey"
 				:validation-errors="validationErrors"
+			/>
+			<namespace-access-section
+				v-if="platform && !isNew && profileAccess"
+				:user-id="primaryKey"
+				:access="profileAccess"
+				@refresh="loadProfileAccess"
 			/>
 		</div>
 
@@ -167,14 +178,14 @@
 		<template #sidebar>
 			<user-info-sidebar-detail :is-new="isNew" :user="item" />
 			<revisions-drawer-detail
-				v-if="isBatch === false && isNew === false && revisionsAllowed"
+				v-if="!selfProfile && isBatch === false && isNew === false && revisionsAllowed"
 				ref="revisionsDrawerDetail"
 				collection="directus_users"
 				:primary-key="primaryKey"
 				@revert="revert"
 			/>
 			<comments-sidebar-detail
-				v-if="isBatch === false && isNew === false"
+				v-if="!selfProfile && isBatch === false && isNew === false"
 				collection="directus_users"
 				:primary-key="primaryKey"
 			/>
@@ -208,6 +219,28 @@ import { useRouter } from 'vue-router';
 import UsersNavigation from '../components/navigation.vue';
 import GlobalNavigation from '@/namespaces/global-admin/navigation.vue';
 import UserInfoSidebarDetail from '../components/user-info-sidebar-detail.vue';
+import NamespaceAccessSection from '../components/namespace-access-section.vue';
+import type { ProfileAccess } from '../profile-access';
+import { getProfileAccess } from '../profile-access';
+import { getNamespaceRuntime } from '@/namespaces/live';
+
+const SELF_PROFILE_FIELDS = new Set([
+	'first_name',
+	'last_name',
+	'email',
+	'password',
+	'avatar',
+	'location',
+	'title',
+	'description',
+	'tags',
+	'preferences_divider',
+	'language',
+	'theme',
+	'tfa_secret',
+	'email_notifications',
+	'default_namespace',
+]);
 
 export default defineComponent({
 	name: 'UsersItem',
@@ -218,6 +251,7 @@ export default defineComponent({
 		SaveOptions,
 		CommentsSidebarDetail,
 		UserInfoSidebarDetail,
+		NamespaceAccessSection,
 	},
 	props: {
 		primaryKey: {
@@ -229,12 +263,13 @@ export default defineComponent({
 			default: null,
 		},
 		platform: { type: Boolean, default: false },
+		selfProfile: { type: Boolean, default: false },
 	},
 	setup(props) {
 		const { t, locale } = useI18n();
 
 		const router = useRouter();
-		const usersPath = props.platform ? '/global-admin/users' : '/users';
+		const usersPath = props.selfProfile ? '/content' : props.platform ? '/global-admin/users' : '/users';
 
 		const form = ref<HTMLElement>();
 		const fieldsStore = useFieldsStore();
@@ -274,7 +309,26 @@ export default defineComponent({
 			};
 		}
 
-		const isSavable = computed(() => saveAllowed.value && hasEdits.value);
+		const canEdit = computed(() => props.selfProfile || updateAllowed.value);
+		const canSave = computed(() => props.selfProfile || saveAllowed.value);
+		const isSavable = computed(() => canSave.value && hasEdits.value);
+		const canManageMembers = computed(() => getNamespaceRuntime()?.state.active?.access.canManageMembers === true);
+		const profileAccess = ref<ProfileAccess | null>(null);
+		let profileRequest = 0;
+		watch(() => props.primaryKey, loadProfileAccess, { immediate: true });
+
+		async function loadProfileAccess() {
+			const request = ++profileRequest;
+			profileAccess.value = null;
+			if (!props.platform && !props.selfProfile) return;
+
+			try {
+				const result = await getProfileAccess(props.primaryKey);
+				if (request === profileRequest) profileAccess.value = result;
+			} catch (error: any) {
+				if (request === profileRequest) unexpectedError(error);
+			}
+		}
 
 		const { confirmLeave, leaveTo } = useEditsGuard(hasEdits);
 
@@ -304,6 +358,25 @@ export default defineComponent({
 
 		const fieldsFiltered = computed(() => {
 			return fields.value.filter((field: Field) => {
+				if (props.selfProfile && !SELF_PROFILE_FIELDS.has(field.field)) return false;
+
+				if (field.field === 'default_namespace') {
+					if (!props.platform && !props.selfProfile) return false;
+
+					field.meta.options = {
+						...(field.meta.options || {}),
+						choices: [
+							...(profileAccess.value?.eligible_defaults.length === 1
+								? []
+								: [{ text: 'Choose at sign-in', value: null }]),
+							...(profileAccess.value?.eligible_defaults ?? []).map((choice) => ({
+								text: choice.name,
+								value: choice.id,
+							})),
+						],
+					};
+				}
+
 				// /roles is scoped to the active child; it cannot edit a shared main role here.
 				if (props.platform && field.field === 'role') return false;
 
@@ -374,6 +447,12 @@ export default defineComponent({
 			revert,
 			avatarError,
 			isSavable,
+			canSave,
+			canEdit,
+			canManageMembers,
+			profileAccess,
+			loadProfileAccess,
+			userStore,
 		};
 
 		function navigateBack() {
@@ -390,8 +469,8 @@ export default defineComponent({
 		function useBreadcrumb() {
 			const breadcrumb = computed(() => [
 				{
-					name: t('user_directory'),
-					to: usersPath,
+					name: props.selfProfile ? 'My Profile' : t('user_directory'),
+					to: props.selfProfile ? '/profile' : usersPath,
 				},
 			]);
 
@@ -427,7 +506,7 @@ export default defineComponent({
 		}
 
 		async function saveAndAddNew() {
-			if (props.platform) return;
+			if (props.platform || props.selfProfile) return;
 
 			try {
 				const savedItem: Record<string, any> = await save();
@@ -440,7 +519,7 @@ export default defineComponent({
 		}
 
 		async function saveAsCopyAndNavigate() {
-			if (props.platform) return;
+			if (props.platform || props.selfProfile) return;
 
 			try {
 				const newPrimaryKey = await saveAsCopy();

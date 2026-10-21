@@ -39,6 +39,7 @@ export interface SessionContext {
 	user: { id: string; name: string };
 	platform: PlatformCapabilities;
 	defaultNamespaceId: NamespaceId | null;
+	preferredNamespaceId?: NamespaceId | null;
 }
 export interface TokenGrant {
 	namespace: NamespaceIdentity;

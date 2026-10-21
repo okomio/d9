@@ -119,15 +119,18 @@ export function createNamespaceRuntime(options: NamespaceRuntimeOptions) {
 			revision !== registryRevision
 		)
 			return;
+
 		if (new Set(choices.map((choice) => choice.namespace.id)).size !== choices.length) {
 			const error = new NamespaceError('contract', 'Duplicate namespace identity');
 			state.choicesLoading = false;
 			state.choicesError = error;
 			throw error;
 		}
+
 		state.choices = choices;
 		state.choicesLoading = false;
 		state.choicesError = null;
+
 		// A registry/membership refresh can revoke the active child while its native view is open.
 		// Reuse the foundation's access-loss reset instead of leaving that view mounted.
 		if (
@@ -178,7 +181,12 @@ export function createNamespaceRuntime(options: NamespaceRuntimeOptions) {
 
 			const eligibleChildren = state.choices.filter(isEnterableChild);
 
-			const id = target ?? (eligibleChildren.length === 1 ? eligibleChildren[0]!.namespace.id : null);
+			const preferred = session.preferredNamespaceId;
+
+			const id =
+				target ??
+				(preferred && eligibleChildren.some((choice) => choice.namespace.id === preferred) ? preferred : null) ??
+				(eligibleChildren.length === 1 ? eligibleChildren[0]!.namespace.id : null);
 
 			// Do not choose the first unauthorized/unready option or silently ignore an explicit target.
 			if (!id || !allowedDestination(state.choices, id, session.platform.isGlobalAdmin)) {
