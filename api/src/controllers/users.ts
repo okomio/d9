@@ -13,6 +13,73 @@ import { UsersService } from '../services/users.js';
 import type { PrimaryKey } from '../types/index.js';
 import asyncHandler from '../utils/async-handler.js';
 import { sanitizeQuery } from '../utils/sanitize-query.js';
+import getDatabase from '../database/index.js';
+import { hasGlobalAuthority } from '../virtual-namespace/authority.js';
+import { isVirtualNamespaceEnabled } from '../virtual-namespace/config.js';
+import { userProfileAccess } from '../virtual-namespace/profile-access.js';
+
+const SELF_READ_FIELDS = [
+	'id',
+	'first_name',
+	'last_name',
+	'email',
+	'avatar.id',
+	'location',
+	'title',
+	'description',
+	'tags',
+	'language',
+	'theme',
+	'email_notifications',
+	'tfa_secret',
+	'last_page',
+	'last_access',
+	'role.id',
+	'role.name',
+	'role.admin_access',
+	'role.app_access',
+	'role.enforce_tfa',
+	'default_namespace',
+];
+
+const SELF_WRITE_FIELDS = new Set([
+	'first_name',
+	'last_name',
+	'email',
+	'password',
+	'avatar',
+	'location',
+	'title',
+	'description',
+	'tags',
+	'language',
+	'theme',
+	'email_notifications',
+	'default_namespace',
+]);
+
+function selfReadQuery(query: Record<string, any>) {
+	const requested = query['fields'];
+
+	const fields =
+		Array.isArray(requested) && !requested.includes('*')
+			? requested.filter((field: string) => SELF_READ_FIELDS.includes(field))
+			: SELF_READ_FIELDS;
+
+	return { ...query, fields: fields.length ? fields : ['id'] };
+}
+
+function safeSelfPayload(body: unknown): body is Record<string, unknown> {
+	if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+
+	return Object.entries(body).every(([field, value]) => {
+		if (!SELF_WRITE_FIELDS.has(field)) return false;
+		if (field === 'tags')
+			return value === null || (Array.isArray(value) && value.every((tag) => typeof tag === 'string'));
+		if (field === 'email_notifications') return typeof value === 'boolean';
+		return value === null || typeof value === 'string';
+	});
+}
 
 const router = express.Router();
 
@@ -100,12 +167,16 @@ router.get(
 		}
 
 		const service = new UsersService({
-			accountability: req.accountability,
+			accountability: isVirtualNamespaceEnabled() ? { ...req.accountability, admin: true } : req.accountability,
 			schema: req.schema,
 		});
 
 		try {
-			const item = await service.readOne(req.accountability.user, req.sanitizedQuery);
+			const item = await service.readOne(
+				req.accountability.user,
+				isVirtualNamespaceEnabled() ? selfReadQuery(req.sanitizedQuery) : req.sanitizedQuery
+			);
+
 			res.locals['payload'] = { data: item || null };
 		} catch (error: any) {
 			if (error instanceof ForbiddenException) {
@@ -116,6 +187,27 @@ router.get(
 			throw error;
 		}
 
+		return next();
+	}),
+	respond
+);
+
+router.get(
+	'/me/profile-access',
+	asyncHandler(async (req, res, next) => {
+		if (req.accountability?.share_scope) throw new ForbiddenException();
+		if (!req.accountability?.user) throw new InvalidCredentialsException();
+		res.locals['payload'] = { data: await userProfileAccess(getDatabase(), req.accountability.user) };
+		return next();
+	}),
+	respond
+);
+
+router.get(
+	'/:pk/profile-access',
+	asyncHandler(async (req, res, next) => {
+		if (!hasGlobalAuthority(req.accountability)) throw new ForbiddenException();
+		res.locals['payload'] = { data: await userProfileAccess(getDatabase(), req.params['pk']!) };
 		return next();
 	}),
 	respond
@@ -142,17 +234,27 @@ router.get(
 router.patch(
 	'/me',
 	asyncHandler(async (req, res, next) => {
+		if (req.accountability?.share_scope) throw new ForbiddenException();
+
 		if (!req.accountability?.user) {
 			throw new InvalidCredentialsException();
 		}
 
+		if (isVirtualNamespaceEnabled() && !safeSelfPayload(req.body)) {
+			throw new ForbiddenException();
+		}
+
 		const service = new UsersService({
-			accountability: req.accountability,
+			accountability: isVirtualNamespaceEnabled() ? { ...req.accountability, admin: true } : req.accountability,
 			schema: req.schema,
 		});
 
 		const primaryKey = await service.updateOne(req.accountability.user, req.body);
-		const item = await service.readOne(primaryKey, req.sanitizedQuery);
+
+		const item = await service.readOne(
+			primaryKey,
+			isVirtualNamespaceEnabled() ? selfReadQuery(req.sanitizedQuery) : req.sanitizedQuery
+		);
 
 		res.locals['payload'] = { data: item || null };
 		return next();

@@ -90,6 +90,12 @@ fields:
           text: $t:fields.directus_users.theme_dark
     width: half
 
+  - field: default_namespace
+    interface: select-dropdown
+    options:
+      choices: []
+    width: half
+
   - field: tfa_secret
     interface: system-mfa-setup
     special:

@@ -2,8 +2,8 @@ import type { Knex } from 'knex';
 import knex from 'knex';
 import { createTracker, MockClient, type Tracker } from 'knex-mock-client';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { InvalidPayloadException } from '../exceptions/index.js';
-import { addMember, lookupUsers, updateMemberRole } from './members.js';
+import { InvalidPayloadException, UnprocessableEntityException } from '../exceptions/index.js';
+import { addMember, lookupUsers, removeMember, updateMemberRole } from './members.js';
 
 describe('namespace member lookup and assignment', () => {
 	let database: Knex;
@@ -53,6 +53,7 @@ describe('namespace member lookup and assignment', () => {
 
 	test('moves an existing member to the selected local role only', async () => {
 		tracker.on.select(/select "id", "namespace" from "directus_roles"/).response({ id: 'next', namespace: 'tracking' });
+		tracker.on.select('directus_namespaces').response({ id: 'tracking' });
 		tracker.on.select(/select "admin_access" from "directus_roles"/).response({ admin_access: false });
 		tracker.on.select('directus_user_namespaces').response({ role_id: 'old', admin_access: false });
 		tracker.on.update('directus_user_namespaces').response([]);
@@ -62,5 +63,24 @@ describe('namespace member lookup and assignment', () => {
 		expect(tracker.history.update).toHaveLength(1);
 		expect(tracker.history.update[0]!.sql).toContain('directus_user_namespaces');
 		expect(tracker.history.update[0]!.sql).not.toContain('directus_users');
+	});
+
+	test('does not demote or remove the last local admin', async () => {
+		tracker.on
+			.select(/select "id", "namespace" from "directus_roles"/)
+			.response({ id: 'viewer', namespace: 'tracking' });
+
+		tracker.on.select('directus_namespaces').response({ id: 'tracking' });
+		tracker.on.select(/select "m"\."role_id", "r"\."admin_access"/).response({ role_id: 'admin', admin_access: true });
+		tracker.on.select(/select "admin_access" from "directus_roles"/).response({ admin_access: false });
+		tracker.on.select(/count\(\*\)/).response([{ count: '0' }]);
+
+		await expect(updateMemberRole(database, 'tracking', 'user', 'viewer')).rejects.toBeInstanceOf(
+			UnprocessableEntityException
+		);
+
+		await expect(removeMember(database, 'tracking', 'user')).rejects.toBeInstanceOf(UnprocessableEntityException);
+		expect(tracker.history.update).toHaveLength(0);
+		expect(tracker.history.delete).toHaveLength(0);
 	});
 });

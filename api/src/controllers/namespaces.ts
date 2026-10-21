@@ -16,6 +16,7 @@ import {
 } from '../virtual-namespace/members.js';
 import { getNamespace } from '../virtual-namespace/registry.js';
 import { hasGlobalAuthority } from '../virtual-namespace/authority.js';
+import { preferredLandingNamespace } from '../virtual-namespace/profile-access.js';
 
 const router = Router();
 
@@ -81,8 +82,34 @@ router.get(
 			app: accountability.app === true,
 		});
 
-		res.locals['payload'] = { data, default: defaultNamespace };
+		const eligible = data
+			.filter((namespace) => namespace.kind === 'virtual' && namespace.can_enter && namespace.can_use_app)
+			.map((namespace) => namespace.id);
 
+		const preferred = await preferredLandingNamespace(getDatabase(), accountability.user, eligible);
+		res.locals['payload'] = { data, default: defaultNamespace, preferred };
+
+		return next();
+	}),
+	respond
+);
+
+/** Role choices for a ready namespace. Never return roles from another area. */
+router.get(
+	'/:namespace/roles',
+	asyncHandler(async (req, res, next) => {
+		const namespaceId = req.params['namespace']!;
+		await assertCanManage(req, namespaceId);
+		const namespace = await getNamespace(getDatabase(), namespaceId);
+		if (namespace?.kind !== 'virtual' || namespace.readiness !== 'ready') throw new ForbiddenException();
+
+		const roles = await getDatabase()
+			.select(['id', 'name', 'admin_access', 'app_access'])
+			.from('directus_roles')
+			.where('namespace', namespaceId)
+			.orderBy('name');
+
+		res.locals['payload'] = { data: roles };
 		return next();
 	}),
 	respond
@@ -167,6 +194,10 @@ router.patch(
 		const namespaceId = req.params['namespace']!;
 		await assertCanManage(req, namespaceId);
 
+		if (req.params['user'] === req.accountability?.user && !hasGlobalAuthority(req.accountability)) {
+			throw new ForbiddenException();
+		}
+
 		await updateMemberRole(
 			getDatabase(),
 			namespaceId,
@@ -192,6 +223,10 @@ router.delete(
 	asyncHandler(async (req, res, next) => {
 		const namespaceId = req.params['namespace']!;
 		await assertCanManage(req, namespaceId);
+
+		if (req.params['user'] === req.accountability?.user && !hasGlobalAuthority(req.accountability)) {
+			throw new ForbiddenException();
+		}
 
 		await removeMember(getDatabase(), namespaceId, requireString(req.params['user'], 'user'));
 

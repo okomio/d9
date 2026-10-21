@@ -18,6 +18,7 @@ import { MailService } from './mail/index.js';
 import { SettingsService } from './settings.js';
 import { assertSharedWrite } from '../virtual-namespace/authority.js';
 import { runWithoutNamespace } from '../virtual-namespace/context.js';
+import { assertEligibleDefault } from '../virtual-namespace/profile-access.js';
 
 export class UsersService extends ItemsService {
 	constructor(options: AbstractServiceOptions) {
@@ -176,6 +177,11 @@ export class UsersService extends ItemsService {
 	 */
 	override async createMany(data: Partial<Item>[], opts?: MutationOptions): Promise<PrimaryKey[]> {
 		assertSharedWrite(this.collection, this.accountability);
+
+		if (data.some((payload) => Object.hasOwn(payload, 'default_namespace'))) {
+			throw new InvalidPayloadException('Set a default namespace after the account has access');
+		}
+
 		const emails = data['map']((payload) => payload['email']).filter((email) => email);
 		const passwords = data['map']((payload) => payload['password']).filter((password) => password);
 
@@ -238,6 +244,14 @@ export class UsersService extends ItemsService {
 	 */
 	override async updateMany(keys: PrimaryKey[], data: Partial<Item>, opts?: MutationOptions): Promise<PrimaryKey[]> {
 		assertSharedWrite(this.collection, this.accountability);
+
+		if (Object.hasOwn(data, 'default_namespace')) {
+			if (data['role'] !== undefined || (data['status'] !== undefined && data['status'] !== 'active')) {
+				throw new InvalidPayloadException('Change the role or status before setting a default namespace');
+			}
+
+			for (const key of keys) await assertEligibleDefault(this.knex, String(key), data['default_namespace']);
+		}
 
 		try {
 			if (data['role']) {
