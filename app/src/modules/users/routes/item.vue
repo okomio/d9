@@ -216,6 +216,7 @@ import SaveOptions from '@/views/private/components/save-options.vue';
 import { useCollection } from '@wbce-d9/composables';
 import { Field } from '@wbce-d9/types';
 import { useRouter } from 'vue-router';
+import { cloneDeep } from 'lodash';
 import UsersNavigation from '../components/navigation.vue';
 import GlobalNavigation from '@/namespaces/global-admin/navigation.vue';
 import UserInfoSidebarDetail from '../components/user-info-sidebar-detail.vue';
@@ -280,7 +281,7 @@ export default defineComponent({
 		const { primaryKey } = toRefs(props);
 		const { breadcrumb } = useBreadcrumb();
 
-		const { info: collectionInfo } = useCollection('directus_users');
+		const { info: collectionInfo, fields: rawUserFields } = useCollection('directus_users');
 
 		const revisionsDrawerDetail = ref<InstanceType<typeof RevisionsDrawerDetail> | null>(null);
 
@@ -357,7 +358,10 @@ export default defineComponent({
 		const fieldsDenyList = ['id', 'last_page', 'created_on', 'created_by', 'modified_by', 'modified_on', 'last_access'];
 
 		const fieldsFiltered = computed(() => {
-			return fields.value.filter((field: Field) => {
+			// /users/me has its own server-enforced personal-field contract. Child
+			// directory ACLs must not hide permitted fields from the native profile.
+			const availableFields = props.selfProfile ? cloneDeep(rawUserFields.value) : fields.value;
+			return availableFields.filter((field: Field) => {
 				if (props.selfProfile && !SELF_PROFILE_FIELDS.has(field.field)) return false;
 
 				if (field.field === 'default_namespace') {
