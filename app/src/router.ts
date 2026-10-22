@@ -117,6 +117,13 @@ export const defaultRoutes: RouteRecordRaw[] = [
 		meta: { track: false },
 	},
 	{
+		name: 'self-profile',
+		path: '/profile',
+		component: () => import('@/modules/users/routes/item.vue'),
+		props: { primaryKey: 'me', selfProfile: true },
+		meta: { track: false },
+	},
+	{
 		name: 'global-admin-home',
 		path: '/global-admin',
 		redirect: (to) => ({ path: '/global-admin/users', query: to.query }),

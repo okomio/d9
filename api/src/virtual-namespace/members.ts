@@ -241,22 +241,27 @@ export async function updateMemberRole(
 ): Promise<void> {
 	await assertRoleBelongs(database, namespaceId, roleId);
 
-	const current = await database
-		.select(['m.role_id', 'r.admin_access'])
-		.from(`${MEMBERSHIP_TABLE} as m`)
-		.leftJoin(`${ROLES_TABLE} as r`, 'm.role_id', 'r.id')
-		.where({ 'm.user_id': userId, 'm.namespace_id': namespaceId })
-		.first();
+	await database.transaction(async (trx) => {
+		// Serialize all demotions/removals in this namespace before counting admins.
+		await trx('directus_namespaces').where({ id: namespaceId }).forUpdate().first();
 
-	if (!current) throw new InvalidPayloadException(`"${userId}" is not a member of this namespace`);
+		const current = await trx
+			.select(['m.role_id', 'r.admin_access'])
+			.from(`${MEMBERSHIP_TABLE} as m`)
+			.leftJoin(`${ROLES_TABLE} as r`, 'm.role_id', 'r.id')
+			.where({ 'm.user_id': userId, 'm.namespace_id': namespaceId })
+			.first();
 
-	const next = await database.select('admin_access').from(ROLES_TABLE).where({ id: roleId }).first();
+		if (!current) throw new InvalidPayloadException(`"${userId}" is not a member of this namespace`);
 
-	if (current.admin_access === true && next?.admin_access !== true) {
-		await assertKeepsAnAdmin(database, namespaceId, userId);
-	}
+		const next = await trx.select('admin_access').from(ROLES_TABLE).where({ id: roleId }).first();
 
-	await database(MEMBERSHIP_TABLE).where({ user_id: userId, namespace_id: namespaceId }).update({ role_id: roleId });
+		if (current.admin_access === true && next?.admin_access !== true) {
+			await assertKeepsAnAdmin(trx, namespaceId, userId);
+		}
+
+		await trx(MEMBERSHIP_TABLE).where({ user_id: userId, namespace_id: namespaceId }).update({ role_id: roleId });
+	});
 }
 
 /**
@@ -267,18 +272,22 @@ export async function updateMemberRole(
  * Admin authority. Cannot remove the last admin.
  */
 export async function removeMember(database: Knex, namespaceId: string, userId: string): Promise<void> {
-	const current = await database
-		.select(['m.role_id', 'r.admin_access'])
-		.from(`${MEMBERSHIP_TABLE} as m`)
-		.leftJoin(`${ROLES_TABLE} as r`, 'm.role_id', 'r.id')
-		.where({ 'm.user_id': userId, 'm.namespace_id': namespaceId })
-		.first();
+	await database.transaction(async (trx) => {
+		await trx('directus_namespaces').where({ id: namespaceId }).forUpdate().first();
 
-	if (!current) throw new InvalidPayloadException(`"${userId}" is not a member of this namespace`);
+		const current = await trx
+			.select(['m.role_id', 'r.admin_access'])
+			.from(`${MEMBERSHIP_TABLE} as m`)
+			.leftJoin(`${ROLES_TABLE} as r`, 'm.role_id', 'r.id')
+			.where({ 'm.user_id': userId, 'm.namespace_id': namespaceId })
+			.first();
 
-	if (current.admin_access === true) {
-		await assertKeepsAnAdmin(database, namespaceId, userId);
-	}
+		if (!current) throw new InvalidPayloadException(`"${userId}" is not a member of this namespace`);
 
-	await database(MEMBERSHIP_TABLE).where({ user_id: userId, namespace_id: namespaceId }).delete();
+		if (current.admin_access === true) {
+			await assertKeepsAnAdmin(trx, namespaceId, userId);
+		}
+
+		await trx(MEMBERSHIP_TABLE).where({ user_id: userId, namespace_id: namespaceId }).delete();
+	});
 }

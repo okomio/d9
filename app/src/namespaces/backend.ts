@@ -93,10 +93,13 @@ function controlError(error: unknown, mint = false): never {
 }
 
 async function loadListing(signal?: AbortSignal) {
-	const response = await control.get<{ data: WireNamespace[]; default: string | null }>('/namespaces', {
-		headers: bearer(),
-		signal,
-	});
+	const response = await control.get<{ data: WireNamespace[]; default: string | null; preferred: string | null }>(
+		'/namespaces',
+		{
+			headers: bearer(),
+			signal,
+		}
+	);
 
 	return response.data;
 }
@@ -124,6 +127,7 @@ export const backendNamespaceAdapter: NamespaceAdapter = {
 			},
 			platform: platform(globalAdmin),
 			defaultNamespaceId: namespaces.default,
+			preferredNamespaceId: namespaces.preferred,
 		};
 	},
 	async listAvailable(signal) {

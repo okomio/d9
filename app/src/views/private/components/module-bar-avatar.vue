@@ -87,7 +87,7 @@ export default defineComponent({
 
 		const userProfileLink = computed<string>(() => {
 			const id = userStore.currentUser?.id;
-			return `/users/${id}`;
+			return namespaceFrontendEnabled ? '/profile' : `/users/${id}`;
 		});
 
 		const signOutLink = computed<string>(() => {
